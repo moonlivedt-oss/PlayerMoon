@@ -122,6 +122,20 @@ TEST(ThemeRoundTrip) {
     CHECK(back.settings.skin == "sunset");
 }
 
+TEST(PaletteFromCoverPixels) {
+    // Картинка 2x2: три тёмно-синих пикселя и один ярко-оранжевый
+    const uint8_t px[] = {120, 40, 20, 255, 120, 40, 20, 255, 120, 40, 20, 255, 20, 140, 250, 255};
+    const auto p = theme::PaletteFromPixels(px, 4, "x");
+    // Самый насыщенный - оранжевый: оттенок около 30 градусов
+    CHECK(p.h3 >= 25 && p.h3 <= 35);
+    CHECK(p.bg3.r > p.bg3.b);
+    // Средний цвет - синеватый: bg1 с перевесом синего
+    CHECK(p.bg1.b > p.bg1.r);
+    // Без пикселей - палитра из названия, как у заглушки
+    const auto q = theme::PaletteFromPixels(nullptr, 0, "Neon Rain");
+    CHECK(q.h3 == theme::MakeCoverPalette("Neon Rain").h3);
+}
+
 TEST(CoverPaletteMatchesMockup) {
     // Эталоны посчитаны в браузере из palette() макета (цвета - getComputedStyle)
     CHECK(theme::Fnv1a("Neon Rain") == 4184706477u);

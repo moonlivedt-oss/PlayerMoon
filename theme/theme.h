@@ -131,6 +131,9 @@ struct Theme {
     std::string id;    // id встроенной темы-основы
     std::string name;  // имя для меню и экспорта
     bool builtin = true;
+    // Цвет текста отличается от встроенной темы: второй и третий уровни текста
+    // получаются из него прозрачностью 74% и 58% (как в макете), а не из material
+    bool customText = false;
     Settings settings;
     Material material;
     json::Value materialJson;  // проверенный исходник material (для экспорта и отладки)

@@ -69,6 +69,56 @@ CoverPalette MakeCoverPalette(std::string_view title) {
     return p;
 }
 
+namespace {
+
+struct HslColor {
+    double h = 0, s = 0, l = 0;  // градусы, проценты, проценты
+};
+
+HslColor ToHsl(double r, double g, double b) {
+    const double mx = std::max({r, g, b}), mn = std::min({r, g, b});
+    HslColor c;
+    c.l = (mx + mn) / 2 * 100;
+    const double d = mx - mn;
+    if (d < 1e-9) return c;
+    c.s = (c.l > 50 ? d / (2 - mx - mn) : d / (mx + mn)) * 100;
+    if (mx == r) c.h = std::fmod((g - b) / d + 6, 6.0) * 60;
+    else if (mx == g) c.h = ((b - r) / d + 2) * 60;
+    else c.h = ((r - g) / d + 4) * 60;
+    return c;
+}
+
+}  // namespace
+
+CoverPalette PaletteFromPixels(const uint8_t* bgra, int pixelCount, std::string_view title) {
+    CoverPalette p = MakeCoverPalette(title);
+    if (!bgra || pixelCount <= 0) return p;
+    double sr = 0, sg = 0, sb = 0;
+    HslColor vivid;
+    double vividScore = -1;
+    for (int i = 0; i < pixelCount; ++i) {
+        const double b = bgra[i * 4] / 255.0, g = bgra[i * 4 + 1] / 255.0, r = bgra[i * 4 + 2] / 255.0;
+        sr += r;
+        sg += g;
+        sb += b;
+        const HslColor c = ToHsl(r, g, b);
+        // Насыщенный цвет средней яркости - самый «характерный» для обложки
+        const double score = c.s * (1 - std::abs(c.l - 50) / 50);
+        if (score > vividScore) {
+            vividScore = score;
+            vivid = c;
+        }
+    }
+    const HslColor avg = ToHsl(sr / pixelCount, sg / pixelCount, sb / pixelCount);
+    // Почти серые обложки: держим насыщенность фона низкой, как у самой картинки
+    const double vividSat = std::min(vivid.s, 90.0);
+    p.bg1 = Hsl(Round0(avg.h), Round0(std::min(avg.s, 80.0) * 0.8), 40);
+    p.bg2 = Hsl(Round0(vivid.h), Round0(vividSat * 0.7), 30);
+    p.bg3 = Hsl(Round0(vivid.h), Round0(vividSat), 55);
+    p.h3 = Round0(vivid.h);
+    return p;
+}
+
 motion::Rgba CoverAccent(const CoverPalette& p, bool darkUi) {
     return darkUi ? Hsl(p.h3, 90, 66) : Hsl(p.h3, 72, 40);
 }

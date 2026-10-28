@@ -5,7 +5,8 @@
 #   pm_core      - ядро без окон: воспроизведение, плейлист, теги, FFT, состояние, JSON
 #   pm_motion    - анимационная математика: пружина, кривые, твины
 #   pm_theme     - модель темы, загрузка, проверка по схеме, палитра обложки
-#   pm_tests     - тесты ядра, темы и анимаций (собираются и на Linux)
+#   pm_view      - состояние интерфейса без Win32: раскладки, виджеты, переходы
+#   pm_tests     - тесты ядра, темы, анимаций и интерфейса (собираются и на Linux)
 #   PlayerMoon   - окно (только Windows)
 cmake_minimum_required(VERSION 3.20)
 project(PlayerMoon LANGUAGES C CXX)
@@ -81,10 +82,18 @@ target_link_libraries(pm_theme PUBLIC pm_core pm_motion)
 target_compile_options(pm_theme PRIVATE ${PM_WARNINGS})
 add_dependencies(pm_theme pm_assets)
 
+# Состояние интерфейса без Win32: раскладки, виджеты, переходы режимов (проверяется тестами)
+add_library(pm_view STATIC view/layout.cpp view/motion_params.cpp view/widgets.cpp view/marquee.cpp view/svg_arc.cpp
+    view/visualizer.cpp view/player_view.cpp)
+target_include_directories(pm_view PUBLIC ${CMAKE_SOURCE_DIR})
+target_link_libraries(pm_view PUBLIC pm_theme pm_core pm_motion)
+target_compile_options(pm_view PRIVATE ${PM_WARNINGS})
+
 # ---------- Тесты ----------
 add_executable(pm_tests tests/main.cpp tests/test_motion.cpp tests/test_json.cpp tests/test_theme.cpp
-    tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp)
-target_link_libraries(pm_tests PRIVATE pm_theme pm_core pm_motion)
+    tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp
+    tests/test_view.cpp)
+target_link_libraries(pm_tests PRIVATE pm_view pm_theme pm_core pm_motion)
 target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})
 # GCC 13 даёт ложное срабатывание stringop-overflow на vector::push_back при -O3 в тестах,
 # где байты файлов собираются вручную. Отключаем только для тестов.
@@ -99,8 +108,8 @@ add_test(NAME pm_tests COMMAND pm_tests)
 if(WIN32)
     file(GLOB PM_UI_SOURCES CONFIGURE_DEPENDS ui/*.cpp)
     add_executable(PlayerMoon WIN32 ${PM_UI_SOURCES} ui/res/app.rc)
-    target_link_libraries(PlayerMoon PRIVATE pm_theme pm_core pm_motion
-        d2d1 dwrite dcomp d3d11 dxgi dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme)
+    target_link_libraries(PlayerMoon PRIVATE pm_view pm_theme pm_core pm_motion
+        d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme)
     target_compile_options(PlayerMoon PRIVATE ${PM_WARNINGS})
     target_link_options(PlayerMoon PRIVATE -municode)
     set_target_properties(PlayerMoon PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

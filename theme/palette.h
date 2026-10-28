@@ -39,6 +39,11 @@ CoverPalette MakeCoverPalette(std::string_view title);
 // CSS hsl(h s% l%) -> RGB
 motion::Rgba Hsl(double h, double s, double l, float alpha = 1);
 
+// Палитра по пикселям настоящей обложки (уменьшенная картинка, BGRA, 8 бит).
+// Средний цвет даёт bg1, самый насыщенный - bg2, bg3 и оттенок h3; остальные поля - из хеша
+// названия (они нужны только заглушке, у которой нет картинки).
+CoverPalette PaletteFromPixels(const uint8_t* bgra, int pixelCount, std::string_view title);
+
 // Акцент из обложки: светлый для тёмных тем, тёмный для светлых (coverAccent в макете)
 motion::Rgba CoverAccent(const CoverPalette& p, bool darkUi);
 

@@ -180,6 +180,8 @@ Engine::~Engine() { Shutdown(); }
 
 bool Engine::Start(const Options& options, WakeFn wake, std::string* error) {
     Impl& m = *impl_;
+    // Повторный запуск (например, после неудачи - уже с null-бэкендом): сначала освобождаем прежнее
+    if (m.contextReady || m.deviceReady) Shutdown();
     m.wake = std::move(wake);
     m.scratch.assign(static_cast<size_t>(kScratchFrames) * kChannels, 0.f);
 

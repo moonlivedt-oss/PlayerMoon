@@ -486,6 +486,7 @@ bool ThemeLibrary::FromDocument(const json::Value& doc, Theme& out, std::string*
     out.name = name.empty() ? base->name : name;
     SettingsFromJson(clean, out.settings);
     out.settings.skin = base->id;
+    out.customText = HexColor(out.settings.text, false) != HexColor(base->settings.text, false);
     return true;
 }
 
