@@ -4,6 +4,7 @@
 // Тема хранится как документ playermoon-theme целиком (если своя) или id встроенной.
 
 #include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,13 @@ struct AppState {
 
     std::string themeId = "glass";  // встроенная тема
     json::Value userTheme;          // своя тема (документ) или null
+
+    // Настройки улучшений
+    bool normalize = true;          // выравнивание громкости по ReplayGain
+    bool showRemaining = false;     // справа под прогрессом - оставшееся время
+    bool miniOnTop = true;          // мини-плеер поверх окон
+    bool playlistFromLibrary = false;  // плейлист - это вся библиотека (новые треки добавляются сами)
+    std::set<std::string> plugins;  // id включённых плагинов
 
     bool mini = false;
     bool playlistOpen = false;

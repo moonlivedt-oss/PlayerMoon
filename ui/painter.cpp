@@ -756,7 +756,11 @@ void Painter::DrawTimes(const view::PlayerView& v) {
     if (auto l = text_->Layout(FormatTime(v.DisplayPosition()), spec, cur.w, cur.h))
         dc_->DrawTextLayout({cur.x, cur.y}, l.Get(), Brush(Text3()));
     spec.align = DWRITE_TEXT_ALIGNMENT_TRAILING;
-    if (auto l = text_->Layout(FormatTime(v.snap.duration), spec, dur.w, dur.h))
+    // Справа - длительность или оставшееся время (клик по времени переключает)
+    const std::wstring right = v.showRemaining
+                                   ? L"-" + FormatTime(std::ceil(std::max(0.0, v.snap.duration - v.DisplayPosition())))
+                                   : FormatTime(v.snap.duration);
+    if (auto l = text_->Layout(right, spec, dur.w, dur.h))
         dc_->DrawTextLayout({dur.x, dur.y}, l.Get(), Brush(Text3()));
 }
 
@@ -903,17 +907,56 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
     heading.display = true;
     heading.upper = m.font.headingUpper;
     heading.spacing = m.font.lsHeading;
-    const Rect& ht = v.frame[Elem::PanelTitle];
-    if (auto l = text_->Layout(L"Очередь", heading, ht.w, ht.h)) dc_->DrawTextLayout({ht.x, ht.y}, l.Get(), Brush(text_c_));
+    heading.ellipsis = false;
+    // Вкладки: активная - цветом текста с полоской акцента, другая - приглушённая (ярче при наведении)
+    struct TabDef {
+        Elem e;
+        const wchar_t* text;
+        int tab;
+    };
+    for (const TabDef& t : {TabDef{Elem::PanelTitle, L"Очередь", 0}, TabDef{Elem::PanelTab2, L"Плагины", 1}}) {
+        const Rect& r = v.frame[t.e];
+        const bool active = v.panelTab == t.tab;
+        const float h = std::clamp(v.Button(t.e).hoverAmt.Value(now), 0.f, 1.f);
+        const Rgba color = active ? text_c_ : motion::Mix(Text3(), text_c_, h * 0.6f);
+        auto l = text_->Layout(t.text, heading, 0, r.h);
+        if (!l) continue;
+        dc_->DrawTextLayout({r.x, r.y}, l.Get(), Brush(color));
+        if (active) {
+            DWRITE_TEXT_METRICS tm{};
+            l->GetMetrics(&tm);
+            const float y = r.Bottom() + 3;
+            dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(r.x, y, r.x + tm.width, y + 2), 1, 1), Brush(accent_));
+        }
+    }
     TextSpec caps;
     caps.size = m.font.fsCaps;
     caps.tabular = true;
     caps.align = DWRITE_TEXT_ALIGNMENT_TRAILING;
     const Rect& hc = v.frame[Elem::PanelCount];
-    if (auto l = text_->Layout(in.countText, caps, hc.w, hc.h)) dc_->DrawTextLayout({hc.x, hc.y}, l.Get(), Brush(Text3()));
+    const std::wstring& countText = v.panelTab == 0 ? in.countText : in.pluginCountText;
+    if (auto l = text_->Layout(countText, caps, hc.w, hc.h)) dc_->DrawTextLayout({hc.x, hc.y}, l.Get(), Brush(Text3()));
 
     const Rect& list = v.frame[Elem::List];
     dc_->PushAxisAlignedClip(ToD2D(list), D2D1_ANTIALIAS_MODE_ALIASED);
+    // После смены вкладки список проявляется со сдвигом снизу
+    const float tabA = std::clamp(v.tabAnim.Value(now), 0.f, 1.f);
+    PushOpacity(tabA);
+    PushTransform(D2D1::Matrix3x2F::Translation(0, (1 - tabA) * 8));
+    if (v.panelTab == 1) DrawPluginRows(v, in);
+    else DrawQueueRows(v, in);
+    PopTransform();
+    PopOpacity();
+    dc_->PopAxisAlignedClip();
+    PopTransform();
+    PopOpacity();
+}
+
+void Painter::DrawQueueRows(const view::PlayerView& v, const PaintInput& in) {
+    const double now = v.now;
+    const theme::Material& m = v.theme.material;
+    const float ts = v.layoutInput.textScale;
+    const Rect& list = v.frame[Elem::List];
     const int count = std::min(v.listCount, in.rows ? static_cast<int>(in.rows->size()) : 0);
     if (count == 0 && !in.emptyHint.empty()) {
         TextSpec hint;
@@ -998,9 +1041,69 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
         PopTransform();
         PopOpacity();
     }
-    dc_->PopAxisAlignedClip();
-    PopTransform();
-    PopOpacity();
+}
+
+void Painter::DrawPluginRows(const view::PlayerView& v, const PaintInput& in) {
+    const double now = v.now;
+    const theme::Material& m = v.theme.material;
+    const float ts = v.layoutInput.textScale;
+    const Rect& list = v.frame[Elem::List];
+    const int count = in.plugins ? static_cast<int>(in.plugins->size()) : 0;
+    TextSpec name;
+    name.size = m.font.fsRow * ts;
+    name.weight = 500;
+    TextSpec desc;
+    desc.size = m.font.fsRowSub * ts;
+    const float nameH = name.size * 1.3f, descH = desc.size * 1.35f;
+    const float rowH = v.frame.rowHeight;
+    const int rows = count + 1;  // последняя - «Открыть папку плагинов»
+    const int first = std::max(0, static_cast<int>(v.listScroll / rowH));
+    const int last = std::min(rows - 1, static_cast<int>((v.listScroll + list.h) / rowH) + 1);
+    for (int i = first; i <= last; ++i) {
+        const auto idx = static_cast<size_t>(i);
+        const Rect r = v.frame.Row(i, v.listScroll);
+        const float hov = idx < v.rowHover.size() ? std::clamp(v.rowHover[idx].Value(now), 0.f, 1.f) : 0.f;
+        const D2D1_RECT_F rr = ToD2D(r);
+        const float rad = Radius(m.radius.row, r.w, r.h);
+        const Rgba bg = WithAlpha(Color(m.color.rowHover), hov);
+        if (bg.a > 0.003f) dc_->FillRoundedRectangle(D2D1::RoundedRect(rr, rad, rad), Brush(bg));
+        const float textX = r.x + 14, cy = r.CenterY();
+        const float toggleW = 38, toggleH = 22, toggleX = r.Right() - 12 - toggleW;
+        const float textW = toggleX - 12 - textX;
+        const float top = cy - (nameH + descH) / 2;
+        if (i == count) {
+            if (auto l = text_->Layout(L"Открыть папку плагинов", name, textW, nameH))
+                dc_->DrawTextLayout({textX, top}, l.Get(), Brush(accent_));
+            if (auto l = text_->Layout(L"Плагин - папка с plugin.json и DLL", desc, textW, descH))
+                dc_->DrawTextLayout({textX, top + nameH}, l.Get(), Brush(Text3()));
+            continue;
+        }
+        const PluginRow& p = (*in.plugins)[idx];
+        const std::wstring title = p.version.empty() ? p.name : p.name + L"  " + p.version;
+        if (auto l = text_->Layout(title, name, textW, nameH)) dc_->DrawTextLayout({textX, top}, l.Get(), Brush(text_c_));
+        // Ошибка загрузки важнее описания
+        const bool failed = !p.error.empty();
+        const std::wstring line = failed ? L"Не загрузился: " + p.error : p.description;
+        if (auto l = text_->Layout(line, desc, textW, descH))
+            dc_->DrawTextLayout({textX, top + nameH}, l.Get(), Brush(failed ? Color(m.color.closeHover) : Text3()));
+        // Переключатель: дорожка от цвета трека к акценту, кружок едет с пружиной
+        const float on = idx < v.pluginOn.size() ? v.pluginOn[idx].Value(now) : 0.f;
+        const float onC = std::clamp(on, 0.f, 1.f);
+        const D2D1_RECT_F tr = D2D1::RectF(toggleX, cy - toggleH / 2, toggleX + toggleW, cy + toggleH / 2);
+        dc_->FillRoundedRectangle(D2D1::RoundedRect(tr, toggleH / 2, toggleH / 2),
+                                  Brush(motion::Mix(Color(m.color.track), accent_, onC)));
+        const float kx = toggleX + 3 + 8 + 16 * on;
+        // Кружок включённого - цветом значка на кнопке «пуск»: виден на любом акценте
+        dc_->FillEllipse(D2D1::Ellipse({kx, cy}, 8, 8), Brush(motion::Mix(Rgba{1, 1, 1, 1}, Color(m.color.onPlay), onC)));
+    }
+    if (count == 0 && !in.pluginsHint.empty()) {
+        TextSpec hint;
+        hint.size = 13;
+        hint.align = DWRITE_TEXT_ALIGNMENT_CENTER;
+        const float y = list.y + rowH + 20 - v.listScroll;
+        if (auto l = text_->Layout(in.pluginsHint, hint, list.w - 24, 60))
+            dc_->DrawTextLayout({list.x + 12, y}, l.Get(), Brush(Text3()));
+    }
 }
 
 // ---------------- мини-режим ----------------

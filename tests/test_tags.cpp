@@ -1,4 +1,5 @@
 // Теги на синтетических файлах: ID3v2.3 и 2.4 с обложкой, ID3v1, FLAC, WAV, длительность MP3
+#include <cmath>
 #include <cstring>
 
 #include "core/tags.h"
@@ -66,6 +67,13 @@ std::vector<uint8_t> MakeId3(int major) {
     Frame(frames, "TIT2", TextBody(1, Utf16Bom(u"Лунный свет")), major);
     Frame(frames, "TPE1", TextBody(3, Utf8("Северный Ветер")), major);
     Frame(frames, "TALB", TextBody(0, {'A', 'l', 'b', 0xE9}), major);  // Latin-1: é
+    Frame(frames, "TRCK", TextBody(0, Utf8("7/12")), major);
+    // ReplayGain: TXXX с описанием и значением
+    std::vector<uint8_t> rg{3};
+    PutStr(rg, "REPLAYGAIN_TRACK_GAIN");
+    rg.push_back(0);
+    PutStr(rg, "-6.02 dB");
+    Frame(frames, "TXXX", rg, major);
     std::vector<uint8_t> apic{3};  // UTF-8
     PutStr(apic, "image/png");
     apic.push_back(0);
@@ -111,6 +119,9 @@ TEST(Id3v23And24WithCover) {
         CHECK(t.album == "Alb\xC3\xA9");
         CHECK(t.coverMime == "image/png");
         CHECK(t.cover == kPng);
+        CHECK(t.track == 7);
+        CHECK(t.hasReplayGain && std::abs(t.replayGainDb + 6.02f) < 1e-4f);
+        CHECK(std::abs(pm::ReplayGainFactor(t) - 0.5f) < 0.001f);  // -6.02 дБ = половина
         // 1000 кадров * 1152 сэмпла / 44100 = 26.12 с
         CHECK_NEAR(t.duration, 1000.0 * 1152 / 44100, 0.01);
         // Без обложки - быстрее и без картинки
@@ -164,7 +175,9 @@ TEST(FlacTagsAndPicture) {
     std::vector<uint8_t> vc;
     tests::PutLe32(vc, 3);
     PutStr(vc, "pm!");
-    const std::vector<std::string> comments = {"TITLE=Город спит", "artist=Кварц", "ALBUM=Ночные окна"};
+    const std::vector<std::string> comments = {"TITLE=Город спит", "artist=Кварц", "ALBUM=Ночные окна",
+                                                "REPLAYGAIN_TRACK_GAIN=+3.5 dB", "replaygain_track_peak=0.9",
+                                                "TRACKNUMBER=2"};
     tests::PutLe32(vc, static_cast<uint32_t>(comments.size()));
     for (const auto& c : comments) {
         tests::PutLe32(vc, static_cast<uint32_t>(c.size()));
@@ -196,6 +209,28 @@ TEST(FlacTagsAndPicture) {
     CHECK(t.title == "Город спит" && t.artist == "Кварц" && t.album == "Ночные окна");
     CHECK_NEAR(t.duration, 10.0, 1e-9);
     CHECK(t.coverMime == "image/jpeg" && t.cover == jpg);
+    CHECK(t.track == 2 && t.hasReplayGain && std::abs(t.replayGainDb - 3.5f) < 1e-4f);
+    // +3.5 дБ = 1.496, но пик 0.9: без перегрузки множитель не больше 1/0.9
+    CHECK(std::abs(pm::ReplayGainFactor(t) - 1.f / 0.9f) < 0.001f);
+    pm::TagInfo none;
+    CHECK(pm::ReplayGainFactor(none) == 1.f);
+}
+
+TEST(FolderCover) {
+    const auto dir = tests::TempDir("folder_cover");
+    tests::WriteBytes(dir / "01.wav", tests::MakeWav(0.1));
+    std::vector<uint8_t> out;
+    std::string mime;
+    CHECK(!pm::ReadFolderCover(dir / "01.wav", out, mime));
+    tests::WriteBytes(dir / "Front.PNG", kPng);
+    tests::WriteBytes(dir / "readme.jpg", {1, 2});
+    CHECK(pm::ReadFolderCover(dir / "01.wav", out, mime));
+    CHECK(out == kPng && mime == "image/png");
+    // cover.jpg важнее front.png
+    const std::vector<uint8_t> jpg = {0xFF, 0xD8, 0xFF, 7};
+    tests::WriteBytes(dir / "Cover.jpg", jpg);
+    CHECK(pm::ReadFolderCover(dir / "01.wav", out, mime));
+    CHECK(out == jpg && mime == "image/jpeg");
 }
 
 TEST(WavInfoAndDuration) {

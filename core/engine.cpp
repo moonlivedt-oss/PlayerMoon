@@ -18,16 +18,18 @@ constexpr double kVolumeSeconds = 0.005;   // сглаживание громк�
 constexpr uint32_t kScratchFrames = 4096;  // кусок чтения из декодера
 
 struct Command {
-    enum class Type { SetTrack, Clear, Seek, Play, Pause } type = Type::Play;
-    IDecoder* decoder = nullptr;  // для SetTrack: владение переходит получателю
+    enum class Type { SetTrack, Clear, Seek, Play, Pause, SetNext, ClearNext } type = Type::Play;
+    IDecoder* decoder = nullptr;  // для SetTrack и SetNext: владение переходит получателю
     uint64_t frame = 0;
+    float gain = 1.f;
 };
 
-// Голос: декодер и его позиция. Сейчас звучит голос 0; голос 1 зарезервирован для кроссфейда.
+// Голос: декодер и его позиция. Звучит голос 0; голос 1 - следующий трек для бесшовного перехода.
 struct Voice {
     IDecoder* decoder = nullptr;
     uint64_t position = 0;
     bool active = false;
+    float gain = 1.f;  // ReplayGain
 };
 
 }  // namespace
@@ -53,6 +55,7 @@ struct Engine::Impl {
     std::atomic<bool> hasTrack{false};
     std::atomic<bool> ended{false};
     std::atomic<bool> silent{false};  // затухание паузы закончилось - устройство можно остановить
+    std::atomic<bool> switched{false};  // был бесшовный переход на следующий трек
 
     // Кольцо сэмплов для визуализатора: атомарные числа, чтобы чтение из UI не было гонкой данных
     std::array<std::atomic<float>, kTapSize> tap{};
@@ -72,12 +75,16 @@ struct Engine::Impl {
     // onAudioThread: где выполняется команда - от этого зависит, кто освобождает старый декодер
     void Apply(const Command& c, bool onAudioThread) {
         Voice& v = voices[0];
+        Voice& next = voices[1];
         switch (c.type) {
             case Command::Type::SetTrack:
             case Command::Type::Clear:
                 Retire(v.decoder, onAudioThread);
+                Retire(next.decoder, onAudioThread);  // очередь относилась к прежнему треку
+                next = Voice{};
                 v.decoder = c.type == Command::Type::SetTrack ? c.decoder : nullptr;
                 v.position = c.frame;
+                v.gain = c.gain;
                 v.active = v.decoder != nullptr;
                 if (v.decoder && c.frame > 0 && !v.decoder->Seek(c.frame)) v.position = 0;
                 position.store(v.position);
@@ -95,7 +102,30 @@ struct Engine::Impl {
                 break;
             case Command::Type::Play: wantPlay = true; break;
             case Command::Type::Pause: wantPlay = false; break;
+            case Command::Type::SetNext:
+            case Command::Type::ClearNext:
+                Retire(next.decoder, onAudioThread);
+                next = Voice{};
+                if (c.type == Command::Type::SetNext && c.decoder) {
+                    next.decoder = c.decoder;
+                    next.gain = c.gain;
+                    next.active = true;
+                }
+                break;
         }
+    }
+
+    // Текущий трек кончился: если следующий открыт заранее - он становится текущим без паузы
+    bool SwitchToNext(bool onAudioThread) {
+        Voice& next = voices[1];
+        if (!next.decoder) return false;
+        Retire(voices[0].decoder, onAudioThread);
+        voices[0] = next;
+        voices[0].position = 0;
+        next = Voice{};
+        length.store(voices[0].decoder->LengthFrames());
+        switched.store(true);
+        return true;
     }
 
     void Retire(IDecoder* d, bool onAudioThread) {
@@ -129,23 +159,35 @@ struct Engine::Impl {
             const uint32_t n = std::min(frames - done, kScratchFrames);
             float* buf = scratch.data();
             uint64_t got = 0;
-            if (v.active && v.decoder) {
-                got = v.decoder->Read(buf, n);
-                v.position += got;
+            // gainAt: до какого кадра действует множитель прежнего трека (при переходе он меняется)
+            float gainBefore = v.gain;
+            uint64_t gainAt = 0;
+            while (v.active && v.decoder && got < n) {
+                const uint64_t r = v.decoder->Read(buf + got * kChannels, n - got);
+                v.position += r;
+                got += r;
                 if (got < n) {
-                    v.active = false;  // трек доиграл
+                    // Трек доиграл: бесшовно на следующий или стоп
+                    gainBefore = v.gain;
+                    gainAt = got;
+                    if (SwitchToNext(true)) {
+                        if (wake) wake();
+                        continue;
+                    }
+                    v.active = false;
                     ended.store(true);
                     if (wake) wake();
                 }
             }
             std::fill(buf + got * kChannels, buf + static_cast<size_t>(n) * kChannels, 0.f);
-            // Здесь будет обработка голоса (time-stretch), второй голос и кроссфейд
+            // Здесь будет обработка голоса (time-stretch) и кроссфейд
             float* dst = out + static_cast<size_t>(done) * kChannels;
             for (uint32_t i = 0; i < n; ++i) {
                 fade = wantPlay ? std::min(1.f, fade + fadeStep) : std::max(0.f, fade - fadeStep);
                 volume += std::clamp(volTarget - volume, -volStep, volStep);
-                const float l = buf[i * 2] * fade;
-                const float r = buf[i * 2 + 1] * fade;
+                const float g = (i < gainAt ? gainBefore : v.gain) * fade;
+                const float l = buf[i * 2] * g;
+                const float r = buf[i * 2 + 1] * g;
                 dst[i * 2] = l * volume;
                 dst[i * 2 + 1] = r * volume;
                 // Визуализатор видит сигнал до громкости: полосы не зависят от ползунка
@@ -235,13 +277,30 @@ void Engine::Shutdown() {
 
 uint32_t Engine::SampleRate() const { return impl_->sampleRate; }
 
-void Engine::SetTrack(std::unique_ptr<IDecoder> decoder, uint64_t startFrame) {
+void Engine::SetTrack(std::unique_ptr<IDecoder> decoder, uint64_t startFrame, float gain) {
     Command c;
     c.type = Command::Type::SetTrack;
     c.decoder = decoder.release();
     c.frame = startFrame;
+    c.gain = gain;
     impl_->Submit(c);
 }
+
+void Engine::QueueNext(std::unique_ptr<IDecoder> decoder, float gain) {
+    Command c;
+    c.type = Command::Type::SetNext;
+    c.decoder = decoder.release();
+    c.gain = gain;
+    impl_->Submit(c);
+}
+
+void Engine::ClearNext() {
+    Command c;
+    c.type = Command::Type::ClearNext;
+    impl_->Submit(c);
+}
+
+bool Engine::TakeSwitched() { return impl_->switched.exchange(false); }
 
 void Engine::ClearTrack() {
     Command c;

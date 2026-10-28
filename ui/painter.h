@@ -32,12 +32,20 @@ struct PlaylistRow {
     std::wstring title, artist, duration;
 };
 
+// Строка раздела «Плагины»
+struct PluginRow {
+    std::wstring name, version, description, error;
+};
+
 struct PaintInput {
     view::Size window;            // размер окна, DIP
     bool systemBackdrop = false;  // системный акрил под окном работает (Windows 11)
     const std::vector<PlaylistRow>* rows = nullptr;
     std::wstring countText;  // «12 треков, 48 мин»
     std::wstring emptyHint;  // подсказка, когда плейлист пуст
+    const std::vector<PluginRow>* plugins = nullptr;
+    std::wstring pluginCountText;  // «2 плагина, включён 1»
+    std::wstring pluginsHint;      // когда плагинов нет
 };
 
 class Painter {
@@ -78,6 +86,8 @@ private:
     void DrawButton(const view::PlayerView& v, view::Elem e, IconId icon, float iconSize, const view::ToggleState* tg);
     void DrawPlayButton(const view::PlayerView& v, view::Elem e);
     void DrawPlaylist(const view::PlayerView& v, const PaintInput& in);
+    void DrawQueueRows(const view::PlayerView& v, const PaintInput& in);
+    void DrawPluginRows(const view::PlayerView& v, const PaintInput& in);
     void DrawMini(const view::PlayerView& v);
 
     // Иконка: квадрат size с центром c. alphaOf - прозрачность и масштаб анимируемых слоёв

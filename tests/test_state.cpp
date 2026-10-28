@@ -18,6 +18,11 @@ TEST(StateRoundTrip) {
     json::Parse(R"({"format":"playermoon-theme","version":1,"name":"Моя","settings":{"skin":"neon"}})", s.userTheme);
     s.mini = true;
     s.playlistOpen = true;
+    s.normalize = false;
+    s.showRemaining = true;
+    s.miniOnTop = false;
+    s.playlistFromLibrary = true;
+    s.plugins = {"history", "lyrics"};
     s.hasWindowPos = true;
     s.windowX = -1200;
     s.windowY = 80;
@@ -31,6 +36,8 @@ TEST(StateRoundTrip) {
     CHECK_NEAR(back.volume, 0.3, 1e-6);
     CHECK(back.muted && back.repeat == "one" && back.shuffle);
     CHECK(back.themeId == "neon" && back.userTheme == s.userTheme);
+    CHECK(!back.normalize && back.showRemaining && !back.miniOnTop && back.playlistFromLibrary);
+    CHECK(back.plugins == s.plugins);
     CHECK(back.mini && back.playlistOpen && back.hasWindowPos && back.windowX == -1200 && back.windowY == 80);
 }
 
@@ -39,6 +46,7 @@ TEST(StateBrokenFileGivesDefaults) {
     pm::AppState s;
     CHECK(!pm::LoadState(dir / "нет.json", s));
     CHECK(s.index == -1 && s.volume == 0.7f && s.themeId == "glass");
+    CHECK(s.normalize && s.miniOnTop && !s.showRemaining && s.plugins.empty());
     tests::WriteBytes(dir / "bad.json", {'{', '"', 'a'});
     CHECK(!pm::LoadState(dir / "bad.json", s));
     // Неверные значения внутри правильного JSON заменяются умолчаниями

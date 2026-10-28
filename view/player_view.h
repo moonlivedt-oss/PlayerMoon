@@ -46,6 +46,11 @@ public:
     virtual void MinimizeWindow() = 0;
     virtual void CloseWindow() = 0;
     virtual void ShowMenu(Point at) = 0;
+    // Меню строки плейлиста (правый клик): играть следующим, убрать, показать в папке
+    virtual void ShowRowMenu(int row, Point at) = 0;
+    // Раздел «Плагины»: включить или выключить плагин, открыть папку плагинов
+    virtual void TogglePlugin(int index) = 0;
+    virtual void OpenPluginsFolder() = 0;
     // Ширина текста в DIP для бегущей строки
     virtual float MeasureText(TextStyle style, const std::string& text) = 0;
 };
@@ -123,6 +128,12 @@ public:
 
     void TogglePlaylist(double now);
     void ToggleMini(double now);
+    // Вкладки панели: 0 - очередь, 1 - плагины. Открывает панель, если она закрыта.
+    void ShowPanelTab(int tab, double now);
+    // Плагины для раздела: включён ли каждый (переключатели анимируются)
+    void SetPlugins(const std::vector<bool>& enabled, double now);
+    // Сколько строк в списке текущей вкладки (у плагинов последняя - «Открыть папку плагинов»)
+    int RowCount() const { return panelTab == 0 ? listCount : pluginCount + 1; }
 
     // ----- кадр -----
     // spectrum - полосы спектра или nullptr (окно не видно, мини-режим, пауза)
@@ -153,6 +164,11 @@ public:
     std::vector<motion::Tween> rowHover;
     int hoverRow = -1;
     int listCount = 0;
+    int panelTab = 0;             // 0 - очередь, 1 - плагины
+    motion::Tween tabAnim{1};     // проявление списка после смены вкладки
+    int pluginCount = 0;
+    std::vector<motion::Tween> pluginOn;  // положение переключателей 0..1
+    bool showRemaining = false;   // справа - оставшееся время (клик по времени)
     float listScroll = 0;
     motion::Tween scrollAnim{0};
 
@@ -198,6 +214,7 @@ private:
     float SliderValueAt(Elem e, float x) const;
     void Activate(Elem e);
     void SetHovered(Elem e);
+    void SwitchTab(int tab);
     int RowAt(Point p) const;
     Size FullWindowSize(bool withPanel) const;
 

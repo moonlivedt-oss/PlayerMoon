@@ -1,6 +1,9 @@
 #include "core/tags.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -80,6 +83,28 @@ size_t Id3StringLength(int enc, const uint8_t* p, size_t n) {
     return z ? static_cast<size_t>(static_cast<const uint8_t*>(z) - p) : n;
 }
 
+// Число из текста тега: "-6.53 dB", "+1.2", "0.98"; не зависит от локали
+bool ParseTagFloat(std::string v, float& out) {
+    v = text::Trim(std::move(v));
+    if (!v.empty() && v[0] == '+') v.erase(0, 1);
+    const char* b = v.data();
+    const auto r = std::from_chars(b, b + v.size(), out);
+    return r.ec == std::errc{};
+}
+
+// Поля, общие для ID3v2 TXXX и Vorbis Comment (ключ в нижнем регистре)
+void ApplyExtraField(const std::string& key, const std::string& value, TagInfo& out) {
+    float f = 0;
+    if (key == "replaygain_track_gain" && ParseTagFloat(value, f)) {
+        out.hasReplayGain = true;
+        out.replayGainDb = f;
+    } else if (key == "replaygain_track_peak" && ParseTagFloat(value, f) && f > 0) {
+        out.replayPeak = f;
+    } else if ((key == "tracknumber" || key == "trck") && out.track == 0) {
+        out.track = std::atoi(value.c_str());  // "3/12" -> 3
+    }
+}
+
 void SetIfEmpty(std::string& field, std::string value) {
     value = text::Trim(std::move(value));
     if (field.empty() && !value.empty()) field = std::move(value);
@@ -142,6 +167,15 @@ void ParseId3v2Body(const std::vector<uint8_t>& tag, int major, uint8_t flags, T
         if (id == "TIT2" || id == "TT2") SetIfEmpty(out.title, DecodeId3Text(enc, body + 1, bodyLen - 1));
         else if (id == "TPE1" || id == "TP1") SetIfEmpty(out.artist, DecodeId3Text(enc, body + 1, bodyLen - 1));
         else if (id == "TALB" || id == "TAL") SetIfEmpty(out.album, DecodeId3Text(enc, body + 1, bodyLen - 1));
+        else if (id == "TRCK" || id == "TRK") ApplyExtraField("trck", DecodeId3Text(enc, body + 1, bodyLen - 1), out);
+        else if (id == "TXXX" || id == "TXX") {
+            // Описание (до нуля в своей кодировке), затем значение
+            const size_t descLen = Id3StringLength(enc, body + 1, bodyLen - 1);
+            const size_t valueAt = 1 + descLen + ((enc == 1 || enc == 2) ? 2 : 1);
+            if (valueAt <= bodyLen)
+                ApplyExtraField(text::AsciiLower(DecodeId3Text(enc, body + 1, descLen)),
+                                DecodeId3Text(enc, body + valueAt, bodyLen - valueAt), out);
+        }
         else if (wantCover && out.cover.empty() && (id == "APIC" || id == "PIC")) {
             size_t p = 1;
             std::string mime;
@@ -283,6 +317,7 @@ bool ReadFlac(ByteSource& s, uint64_t at, TagInfo& out, bool wantCover) {
                         if (key == "title") SetIfEmpty(out.title, kv.substr(eq + 1));
                         else if (key == "artist") SetIfEmpty(out.artist, kv.substr(eq + 1));
                         else if (key == "album") SetIfEmpty(out.album, kv.substr(eq + 1));
+                        else ApplyExtraField(key, kv.substr(eq + 1), out);
                     }
                 }
             }
@@ -362,6 +397,42 @@ bool ReadWav(ByteSource& s, TagInfo& out, bool wantCover) {
 }
 
 }  // namespace
+
+float ReplayGainFactor(const TagInfo& t) {
+    if (!t.hasReplayGain) return 1.f;
+    float k = std::pow(10.f, t.replayGainDb / 20.f);
+    if (t.replayPeak > 0 && k * t.replayPeak > 1.f) k = 1.f / t.replayPeak;  // без перегрузки
+    return std::clamp(k, 0.1f, 4.f);
+}
+
+bool ReadFolderCover(const std::filesystem::path& audio, std::vector<uint8_t>& out, std::string& mime) {
+    std::error_code ec;
+    const std::filesystem::path dir = audio.parent_path();
+    if (dir.empty()) return false;
+    // Имена по убыванию предпочтения
+    static const char* const kNames[] = {"cover", "folder", "front", "album"};
+    std::filesystem::path best;
+    int bestRank = 100;
+    for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const std::string stem = text::AsciiLower(text::PathToUtf8(it->path().stem()));
+        const std::string ext = text::AsciiLower(text::PathToUtf8(it->path().extension()));
+        if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") continue;
+        for (int i = 0; i < 4; ++i)
+            if (stem == kNames[i] && i < bestRank) {
+                bestRank = i;
+                best = it->path();
+            }
+    }
+    if (best.empty()) return false;
+    const uint64_t size = std::filesystem::file_size(best, ec);
+    if (ec || size == 0 || size > kMaxCover) return false;
+    FileSource src(best);
+    if (!src.Ok()) return false;
+    out = ReadBytes(src, 0, static_cast<size_t>(size));
+    mime = text::AsciiLower(text::PathToUtf8(best.extension())) == ".png" ? "image/png" : "image/jpeg";
+    return out.size() == size;
+}
 
 bool IsSupportedAudio(const std::filesystem::path& path) {
     const std::string ext = text::AsciiLower(text::PathToUtf8(path.extension()));

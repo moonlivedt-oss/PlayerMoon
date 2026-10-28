@@ -43,7 +43,8 @@ enum class Elem {
     Volume,
     PlBtn,
     Panel,  // плейлист
-    PanelTitle,
+    PanelTitle,  // вкладка «Очередь»
+    PanelTab2,   // вкладка «Плагины»
     PanelCount,
     List,   // область строк плейлиста
     MiniCover,

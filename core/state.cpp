@@ -27,6 +27,13 @@ json::Value StateToJson(const AppState& s) {
     v["shuffle"] = s.shuffle;
     v["theme"] = s.themeId;
     if (!s.userTheme.IsNull()) v["userTheme"] = s.userTheme;
+    v["normalize"] = s.normalize;
+    v["showRemaining"] = s.showRemaining;
+    v["miniOnTop"] = s.miniOnTop;
+    v["playlistFromLibrary"] = s.playlistFromLibrary;
+    json::Value plugins = json::Value::MakeArray();
+    for (const auto& id : s.plugins) plugins.Push(id);
+    v["plugins"] = std::move(plugins);
     v["mini"] = s.mini;
     v["playlistOpen"] = s.playlistOpen;
     if (s.hasWindowPos) {
@@ -54,6 +61,12 @@ AppState StateFromJson(const json::Value& v) {
     s.shuffle = v.Get("shuffle").AsBool(false);
     if (v.Get("theme").IsString() && !v.Get("theme").AsString().empty()) s.themeId = v.Get("theme").AsString();
     if (v.Get("userTheme").IsObject()) s.userTheme = v.Get("userTheme");
+    s.normalize = v.Get("normalize").AsBool(true);
+    s.showRemaining = v.Get("showRemaining").AsBool(false);
+    s.miniOnTop = v.Get("miniOnTop").AsBool(true);
+    s.playlistFromLibrary = v.Get("playlistFromLibrary").AsBool(false);
+    for (const auto& id : v.Get("plugins").Items())
+        if (id.IsString() && !id.AsString().empty()) s.plugins.insert(id.AsString());
     s.mini = v.Get("mini").AsBool(false);
     s.playlistOpen = v.Get("playlistOpen").AsBool(false);
     const json::Value& w = v.Get("window");

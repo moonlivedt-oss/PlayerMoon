@@ -1,0 +1,9 @@
+{
+  "id": "history",
+  "name": "Журнал прослушиваний",
+  "version": "1.0",
+  "description": "Записывает каждый начатый трек в history.txt: дата, время, исполнитель и название.",
+  "author": "PlayerMoon",
+  "library": "history",
+  "apiVersion": 1
+}

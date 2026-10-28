@@ -26,7 +26,9 @@ void ArrangeSidePanel(const theme::Material& m, float textScale, float x, float 
     // Отступы как в макете: сверху 4, заголовок 6/12/10/20, линия слева 1 px
     const float headTop = top + 4 + 6;
     const float headingH = m.font.fsHeading * textScale * 1.25f;
-    f[Elem::PanelTitle] = {x + 1 + 20, headTop, width - 160, headingH};
+    // Две вкладки: «Очередь» и «Плагины»
+    f[Elem::PanelTitle] = {x + 1 + 20, headTop, 84, headingH};
+    f[Elem::PanelTab2] = {x + 1 + 20 + 92, headTop, 84, headingH};
     f[Elem::PanelCount] = {x + width - 12 - 110, headTop, 110, headingH};
     const float listTop = top + 4 + 6 + headingH + 10;
     f[Elem::List] = {x + 1 + 10, listTop, width - 1 - 20, top + height - listTop - 12};

@@ -46,6 +46,10 @@ public:
     void MinimizeWindow() override {}
     void CloseWindow() override {}
     void ShowMenu(view::Point) override { ++menus; }
+    void ShowRowMenu(int row, view::Point) override { rowMenu = row; }
+    void TogglePlugin(int index) override { toggledPlugin = index; }
+    void OpenPluginsFolder() override { ++folderOpens; }
+    int rowMenu = -1, toggledPlugin = -1, folderOpens = 0;
     float MeasureText(view::TextStyle, const std::string& t) override { return static_cast<float>(t.size()) * 9.f; }
 };
 
@@ -305,4 +309,61 @@ TEST(SvgArcToBeziers) {
     CHECK(std::abs(small[0][2].y + 10) < 1e-3f);
     // Совпадающие концы - ничего не рисуется
     CHECK(view::ArcToCubics({1, 1}, 5, 5, 0, false, true, {1, 1}).empty());
+}
+
+TEST(ViewPanelTabsWheelAndTime) {
+    using view::Elem;
+    FakeHost host;
+    view::PlayerView v;
+    v.SetHost(&host);
+    v.ApplyTheme(Lib().Make("glass"), Lib().Layout("classic"), false, 0, false);
+    view::PlaybackSnapshot s;
+    s.hasTrack = true;
+    s.count = 5;
+    s.index = 0;
+    s.duration = 200;
+    s.position = 50;
+    s.volume = 0.5f;
+    v.Update(0, s, nullptr, true);
+    const auto& f = v.frame;
+    auto click = [&](view::Point p, double t) {
+        v.OnMouseDown(p, t);
+        v.OnMouseUp(p, t);
+        v.Update(t, s, nullptr, true);
+    };
+    auto center = [&](Elem e) { return view::Point{f[e].CenterX(), f[e].CenterY()}; };
+
+    // Колесо над громкостью и над прогрессом
+    v.OnWheel(center(Elem::Volume), 1, 0.1);
+    CHECK(std::abs(host.volume - 0.55f) < 1e-4f);
+    v.OnWheel(center(Elem::Seek), -2, 0.1);
+    CHECK(std::abs(host.seekTo - 40) < 1e-6);
+    // Клик по времени - оставшееся время
+    CHECK(!v.showRemaining);
+    click(center(Elem::TimeDur), 0.2);
+    CHECK(v.showRemaining);
+
+    // Раздел «Плагины» открывает панель на нужной вкладке
+    v.SetPlugins({false, true}, 0.3);
+    v.ShowPanelTab(1, 0.3);
+    for (double t = 0.3; t < 2; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(v.playlistOpen && v.panelTab == 1 && v.RowCount() == 3);
+    // Клик по строке плагина - переключение, по последней строке - папка плагинов
+    const view::Rect r0 = f.Row(0, 0), r2 = f.Row(2, 0);
+    click({r0.CenterX(), r0.CenterY()}, 2.0);
+    CHECK(host.toggledPlugin == 0);
+    click({r2.CenterX(), r2.CenterY()}, 2.1);
+    CHECK(host.folderOpens == 1);
+    // Переключатель анимируется к новому положению
+    v.SetPlugins({true, true}, 2.2);
+    for (double t = 2.2; t < 3; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(std::abs(v.pluginOn[0].Value(3) - 1) < 0.01f);
+    // Вкладка «Очередь» кликом по заголовку; правый клик по строке - меню строки
+    click(center(Elem::PanelTitle), 3.0);
+    CHECK(v.panelTab == 0 && v.RowCount() == 5);
+    const view::Rect r1 = f.Row(1, 0);
+    v.OnRightClick({r1.CenterX(), r1.CenterY()});
+    CHECK(host.rowMenu == 1);
+    v.OnRightClick({10, 300});
+    CHECK(host.menus == 1);
 }

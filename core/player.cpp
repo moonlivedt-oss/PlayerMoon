@@ -54,29 +54,35 @@ void Player::Shutdown() {
 }
 
 int Player::LoadFiles(const std::vector<std::filesystem::path>& files, bool append) {
+    std::vector<PlaylistEntry> tracks;
+    for (const auto& f : files) {
+        if (!IsSupportedAudio(f)) continue;
+        TagInfo tags;
+        PlaylistEntry e{f, {}};
+        if (ReadTags(f, tags, false)) {
+            e.meta.title = tags.title;
+            e.meta.artist = tags.artist;
+            e.meta.album = tags.album;
+            e.meta.duration = tags.duration;
+        }
+        tracks.push_back(std::move(e));
+    }
+    return LoadTracks(tracks, append);
+}
+
+int Player::LoadTracks(const std::vector<PlaylistEntry>& tracks, bool append) {
     if (!append) {
         engine_.Pause();
         engine_.ClearTrack();
         playlist_.Clear();
+        queued_ = -1;
         NowPlaying empty;
         empty.serial = now_.serial + 1;
         now_ = std::move(empty);
     }
-    int added = 0;
-    for (const auto& f : files) {
-        if (!IsSupportedAudio(f)) continue;
-        TagInfo tags;
-        TrackMeta meta;
-        if (ReadTags(f, tags, false)) {
-            meta.title = tags.title;
-            meta.artist = tags.artist;
-            meta.album = tags.album;
-            meta.duration = tags.duration;
-        }
-        playlist_.Add(f, std::move(meta));
-        ++added;
-    }
-    return added;
+    for (const auto& t : tracks) playlist_.Add(t.path, t.meta);
+    if (append && engine_.HasTrack()) PreloadNext();  // следующий трек мог измениться
+    return static_cast<int>(tracks.size());
 }
 
 int Player::LoadFolder(const std::filesystem::path& dir, bool append) {
@@ -104,18 +110,14 @@ bool Player::OpenTrack(int index, double position, int direction) {
         if (decoder) {
             // Advance/Back уже сдвинули текущий трек; Select нужен только для выбора мимо порядка
             if (playlist_.Current() != index) playlist_.Select(index);
-            NowPlaying np;
-            np.index = index;
-            np.path = e.path;
-            ReadTags(e.path, np.tags, true);
-            np.title = np.tags.title.empty() ? text::PathToUtf8(e.path.stem()) : np.tags.title;
-            np.serial = now_.serial + 1;
             // Точная длительность - от декодера; сохраняем в плейлист для показа
             const uint32_t rate = engine_.SampleRate();
             if (decoder->LengthFrames() && rate) e.meta.duration = double(decoder->LengthFrames()) / rate;
             const uint64_t start = static_cast<uint64_t>(std::max(0.0, position) * rate);
-            engine_.SetTrack(std::move(decoder), start);
-            now_ = std::move(np);
+            FillNowPlaying(index, direction);
+            engine_.SetTrack(std::move(decoder), start, TrackGain(now_.tags));
+            queued_ = -1;
+            PreloadNext();
             if (onTrackChanged_) onTrackChanged_(index, direction);
             return true;
         }
@@ -123,6 +125,41 @@ bool Player::OpenTrack(int index, double position, int direction) {
         index = direction < 0 ? (index - 1 + count) % count : (index + 1) % count;
     }
     return false;
+}
+
+void Player::FillNowPlaying(int index, int /*direction*/) {
+    const PlaylistEntry& e = playlist_.At(index);
+    NowPlaying np;
+    np.index = index;
+    np.path = e.path;
+    ReadTags(e.path, np.tags, true);
+    // Нет картинки в тегах - ищем cover.jpg и подобные рядом с файлом
+    if (np.tags.cover.empty()) ReadFolderCover(e.path, np.tags.cover, np.tags.coverMime);
+    np.title = np.tags.title.empty() ? text::PathToUtf8(e.path.stem()) : np.tags.title;
+    np.serial = now_.serial + 1;
+    now_ = std::move(np);
+}
+
+void Player::PreloadNext() {
+    const int next = playlist_.PeekNext();
+    if (next < 0 || next == playlist_.Current()) {
+        if (queued_ >= 0) engine_.ClearNext();
+        queued_ = -1;
+        return;
+    }
+    PlaylistEntry& e = playlist_.At(next);
+    auto decoder = e.meta.broken ? nullptr : OpenDecoder(e.path, Engine::kChannels, engine_.SampleRate(), nullptr);
+    if (!decoder) {
+        // Битый следующий трек: обычный переход по концу трека сам его пропустит
+        e.meta.broken = true;
+        engine_.ClearNext();
+        queued_ = -1;
+        return;
+    }
+    TagInfo tags;
+    ReadTags(e.path, tags, false);
+    engine_.QueueNext(std::move(decoder), TrackGain(tags));
+    queued_ = next;
 }
 
 bool Player::OpenAt(int index, double position, bool play) {
@@ -188,8 +225,57 @@ void Player::ApplyVolume() {
     engine_.SetVolume(v);
 }
 
-void Player::SetRepeat(Repeat r) { playlist_.SetRepeat(r); }
-void Player::SetShuffle(bool on) { playlist_.SetShuffle(on); }
+void Player::SetRepeat(Repeat r) {
+    playlist_.SetRepeat(r);
+    if (engine_.HasTrack()) PreloadNext();
+}
+
+void Player::SetShuffle(bool on) {
+    playlist_.SetShuffle(on);
+    if (engine_.HasTrack()) PreloadNext();
+}
+
+void Player::SetNormalize(bool on) {
+    if (on == normalize_) return;
+    normalize_ = on;
+    // Текущий трек: заново с той же позиции, чтобы применить множитель
+    if (engine_.HasTrack() && now_.index >= 0) {
+        const bool playing = engine_.IsPlaying();
+        const double pos = GetState().position;
+        OpenTrack(now_.index, pos, 0);
+        if (playing) engine_.Play();
+    }
+}
+
+void Player::Remove(int index) {
+    if (index < 0 || index >= playlist_.Size()) return;
+    const bool current = index == now_.index;
+    const bool playing = engine_.IsPlaying();
+    playlist_.Remove(index);
+    if (playlist_.Empty()) {
+        engine_.Pause();
+        engine_.ClearTrack();
+        queued_ = -1;
+        NowPlaying empty;
+        empty.serial = now_.serial + 1;
+        now_ = std::move(empty);
+        if (onTrackChanged_) onTrackChanged_(-1, 0);
+        return;
+    }
+    if (current) {
+        // Играл удалённый трек: на его место встал следующий
+        if (OpenTrack(playlist_.Current(), 0, 1) && playing) engine_.Play();
+        return;
+    }
+    now_.index = playlist_.Current();
+    PreloadNext();
+}
+
+void Player::PlayNext(int index) {
+    playlist_.PlayNext(index);
+    now_.index = playlist_.Current();
+    if (engine_.HasTrack()) PreloadNext();
+}
 
 PlayerState Player::GetState() const {
     PlayerState s;
@@ -208,8 +294,22 @@ PlayerState Player::GetState() const {
 }
 
 void Player::PumpEvents() {
-    if (!engine_.Service()) return;
-    // Трек доиграл
+    const bool ended = engine_.Service();
+    if (engine_.TakeSwitched()) {
+        // Бесшовный переход уже звучит: догоняем плейлист и сведения о треке
+        const int idx = playlist_.Advance(true);
+        if (idx >= 0) {
+            const uint32_t rate = engine_.SampleRate();
+            if (engine_.LengthFrames() && rate)
+                playlist_.At(idx).meta.duration = double(engine_.LengthFrames()) / rate;
+            FillNowPlaying(idx, 1);
+            queued_ = -1;
+            PreloadNext();
+            if (onTrackChanged_) onTrackChanged_(idx, 1);
+        }
+    }
+    if (!ended) return;
+    // Трек доиграл, а следующего в очереди не было
     if (playlist_.GetRepeat() == Repeat::One) {
         engine_.Seek(0);
         return;

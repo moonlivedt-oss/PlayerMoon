@@ -21,8 +21,14 @@ namespace ui {
 namespace {
 
 constexpr wchar_t kClassName[] = L"PlayerMoonWindow";
-constexpr UINT kWakeMessage = WM_APP + 1;  // аудиопоток: есть события для PumpEvents
-constexpr UINT_PTR kTickTimer = 1;         // раз в секунду: время в мини-режиме
+constexpr wchar_t kInstanceMutex[] = L"Local\\PlayerMoon.Instance";
+constexpr UINT kWakeMessage = WM_APP + 1;     // аудиопоток: есть события для PumpEvents
+constexpr UINT kLibraryMessage = WM_APP + 2;  // сканер библиотеки закончил
+constexpr UINT kWatchMessage = WM_APP + 3;    // в папках библиотеки что-то поменялось
+constexpr ULONG_PTR kCopyDataPaths = 0x504D;  // WM_COPYDATA: пути от второго экземпляра
+constexpr UINT_PTR kTickTimer = 1;            // раз в секунду: время в мини-режиме и на панели задач
+constexpr UINT_PTR kSaveTimer = 2;            // отложенное сохранение после изменений
+constexpr UINT_PTR kSaveTick = 3;             // во время игры - позиция раз в 30 секунд
 
 // Атрибуты DWM числами: в заголовках MinGW имён может не быть (как в RadialMenu)
 constexpr DWORD kDwmDarkMode = 20;
@@ -42,7 +48,20 @@ enum MenuId : UINT {
     kMenuMini,
     kMenuPlaylist,
     kMenuExit,
-    kMenuThemeFirst = 100,  // встроенные темы по порядку
+    kMenuNormalize,
+    kMenuMiniTop,
+    kMenuLibraryAll,
+    kMenuLibraryRescan,
+    kMenuLibraryAdd,
+    kMenuLibraryAuto,
+    kMenuPlugins,
+    kMenuRowPlay,
+    kMenuRowNext,
+    kMenuRowShow,
+    kMenuRowRemove,
+    kMenuThemeFirst = 100,          // встроенные темы по порядку
+    kMenuLibraryFolderFirst = 200,  // папки библиотеки (убрать)
+    kMenuPluginItemFirst = 1000,    // пункты, добавленные плагинами
 };
 
 // Глобальные медиаклавиши (RegisterHotKey)
@@ -130,6 +149,11 @@ std::vector<std::filesystem::path> PickPaths(HWND owner, bool folder, bool multi
 // ---------------- запуск ----------------
 
 int App::Run(HINSTANCE instance, int show) {
+    // Один экземпляр: повторный запуск («Открыть с помощью», двойной клик по файлу) отдаёт
+    // файлы уже открытому окну. Мьютекс живёт до выхода из процесса.
+    CreateMutexW(nullptr, FALSE, kInstanceMutex);
+    if (GetLastError() == ERROR_ALREADY_EXISTS && ForwardToRunningInstance()) return 0;
+
     QueryPerformanceFrequency(&freq_);
     ResolvePaths();
     std::vector<std::string> log;
@@ -168,6 +192,7 @@ int App::Run(HINSTANCE instance, int show) {
         if (!paths.empty()) LoadPaths(paths);
     }
     started_ = true;
+    lastCopyData_ = Now();  // файлы, пришедшие следом от других экземпляров, - дописываются
 
     ShowWindow(hwnd_, show);
     RegisterMediaKeys();
@@ -177,6 +202,10 @@ int App::Run(HINSTANCE instance, int show) {
     }
     MessageLoop();
 
+    watcher_.Stop();
+    scanner_.Stop();
+    plugins_.UnloadAll();
+    taskbar_.Detach();
     player_.Shutdown();
     renderer_.Shutdown();
     return 0;
@@ -219,6 +248,7 @@ bool App::CreateMainWindow(HINSTANCE instance) {
     wc.lpszClassName = kClassName;
     wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1));
     if (!RegisterClassExW(&wc)) return false;
+    taskbarCreatedMsg_ = RegisterWindowMessageW(L"TaskbarButtonCreated");
 
     // WS_CAPTION нужен для системной тени и скруглённых углов; саму рамку убирает WM_NCCALCSIZE
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
@@ -227,6 +257,9 @@ bool App::CreateMainWindow(HINSTANCE instance) {
                             this);
     if (!hwnd_) return false;
     dpi_ = static_cast<float>(GetDpiForWindow(hwnd_));
+    // Окно с повышенными правами иначе не получит сообщение о кнопке на панели задач
+    ChangeWindowMessageFilterEx(hwnd_, taskbarCreatedMsg_, MSGFLT_ALLOW, nullptr);
+    ChangeWindowMessageFilterEx(hwnd_, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
 
     const MARGINS margins{-1, -1, -1, -1};
     DwmExtendFrameIntoClientArea(hwnd_, &margins);
@@ -249,13 +282,19 @@ bool App::CreateMainWindow(HINSTANCE instance) {
 
 void App::LoadSavedState() {
     pm::AppState st;
-    pm::LoadState(statePath_, st);  // нет файла - значения по умолчанию
+    // Нет файла - первый запуск: значения по умолчанию и тема под оформление Windows
+    const bool firstRun = !pm::LoadState(statePath_, st);
+    if (firstRun) st.themeId = SystemPrefersLight() ? "frost" : "glass";
 
     // Тема: своя (документ целиком) или встроенная по id
     theme::Theme t;
     std::string err;
     userTheme_ = !st.userTheme.IsNull() && themes_.FromDocument(st.userTheme, t, &err);
     if (!userTheme_) t = themes_.Make(st.themeId);
+    view_.showRemaining = st.showRemaining;
+    miniOnTop_ = st.miniOnTop;
+    playlistFromLibrary_ = st.playlistFromLibrary;
+    player_.SetNormalize(st.normalize);
 
     view_.RestoreModes(st.mini, st.playlistOpen);
     ApplyTheme(t, false);
@@ -278,6 +317,8 @@ void App::LoadSavedState() {
         const int index = std::clamp(st.index, 0, std::max(0, count - 1));
         if (count > 0) player_.OpenAt(index, st.position, false);
     }
+    InitPlugins(st.plugins);
+    InitLibrary(firstRun);
     if (!player_.GetState().hasTrack) OnTrackChanged(-1, 0);
     RebuildRows();
 }
@@ -295,6 +336,11 @@ void App::SaveCurrentState() {
     st.shuffle = ps.shuffle;
     st.themeId = theme_.id;
     if (userTheme_) st.userTheme = themes_.ToUserDocument(theme_, theme_.name);
+    st.normalize = player_.Normalize();
+    st.showRemaining = view_.showRemaining;
+    st.miniOnTop = miniOnTop_;
+    st.playlistFromLibrary = playlistFromLibrary_;
+    st.plugins = plugins_.EnabledIds();
     st.mini = view_.mini;
     st.playlistOpen = view_.playlistOpen;
     RECT rc{};
@@ -306,12 +352,47 @@ void App::SaveCurrentState() {
     pm::SaveState(statePath_, st);
 }
 
+void App::MarkDirty() {
+    // Повторный вызов переставляет таймер: серия изменений даёт одну запись
+    if (hwnd_) SetTimer(hwnd_, kSaveTimer, 2000, nullptr);
+}
+
 // ---------------- тема ----------------
 
 void App::ReadSystemReduce() {
     BOOL anim = TRUE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &anim, 0);
     systemReduce_ = !anim;
+}
+
+bool App::SystemPrefersLight() {
+    DWORD value = 0, size = sizeof(value);
+    const LSTATUS r = RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                                   L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
+    return r == ERROR_SUCCESS && value != 0;
+}
+
+void App::ApplyTopmost() {
+    // Мини-плеер поверх окон (настройка), полный режим - обычное окно
+    const bool want = view_.mini && miniOnTop_;
+    if (want == topmostApplied_) return;
+    SetWindowPos(hwnd_, want ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    topmostApplied_ = want;
+}
+
+void App::SnapToEdges(RECT* r) const {
+    // Прилипание к краям рабочей области монитора при перетаскивании (ближе 16 DIP)
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(MonitorFromRect(r, MONITOR_DEFAULTTONEAREST), &mi)) return;
+    const RECT& w = mi.rcWork;
+    const LONG th = ToPx(16), width = r->right - r->left, height = r->bottom - r->top;
+    if (std::abs(r->left - w.left) < th) r->left = w.left;
+    else if (std::abs(r->right - w.right) < th) r->left = w.right - width;
+    if (std::abs(r->top - w.top) < th) r->top = w.top;
+    else if (std::abs(r->bottom - w.bottom) < th) r->top = w.bottom - height;
+    r->right = r->left + width;
+    r->bottom = r->top + height;
 }
 
 void App::ApplyTheme(const theme::Theme& t, bool animate) {
@@ -361,6 +442,9 @@ void App::OnTrackChanged(int index, int direction) {
     for (const view::CoverSlot& c : view_.covers) keep.push_back(c.serial);
     covers_.Keep(keep);
     RebuildRows();  // длительность трека уточнилась после открытия декодера
+    if (index >= 0 && started_) library_.NotePlayed(np.path, static_cast<int64_t>(time(nullptr)));
+    NotifyPluginsTrack();
+    MarkDirty();
     Invalidate();
 }
 
@@ -384,10 +468,13 @@ void App::RebuildRows() {
     view_.SetPlaylistSize(pl.Size());
 }
 
-void App::LoadPaths(const std::vector<std::filesystem::path>& paths) {
+void App::LoadPaths(const std::vector<std::filesystem::path>& paths, bool append) {
     // Одна папка - сканируется целиком; иначе берём файлы и папки по очереди
     std::vector<std::filesystem::path> files;
-    bool replaced = false;
+    bool replaced = append;
+    const int before = player_.GetPlaylist().Size();
+    playlistFromLibrary_ = false;
+    LearnFolders(paths);
     for (const auto& p : paths) {
         std::error_code ec;
         if (std::filesystem::is_directory(p, ec)) {
@@ -399,7 +486,10 @@ void App::LoadPaths(const std::vector<std::filesystem::path>& paths) {
     }
     if (!files.empty()) player_.LoadFiles(files, replaced);
     RebuildRows();
-    if (player_.GetPlaylist().Size() > 0) player_.PlayIndex(0);
+    // Дописанные треки не прерывают текущий; новый плейлист начинается сразу
+    if (!append && player_.GetPlaylist().Size() > 0) player_.PlayIndex(0);
+    else if (append && !player_.GetState().hasTrack && player_.GetPlaylist().Size() > before) player_.PlayIndex(before);
+    MarkDirty();
     Invalidate();
 }
 
@@ -465,6 +555,25 @@ void App::ShowContextMenu(POINT screen) {
     HMENU themes = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, kMenuOpenFiles, L"Открыть файлы...");
     AppendMenuW(menu, MF_STRING, kMenuOpenFolder, L"Открыть папку...");
+
+    // Библиотека: вся найденная музыка, папки, автопоиск
+    HMENU lib = CreatePopupMenu();
+    HMENU libFolders = CreatePopupMenu();
+    wchar_t allText[64];
+    swprintf(allText, 64, L"Вся музыка (%d)", static_cast<int>(library_.Tracks().size()));
+    AppendMenuW(lib, MF_STRING | (library_.Tracks().empty() ? MF_GRAYED : 0), kMenuLibraryAll, allText);
+    AppendMenuW(lib, MF_STRING | (scanner_.Running() ? MF_GRAYED : 0), kMenuLibraryRescan,
+                scanner_.Running() ? L"Идёт поиск музыки..." : L"Обновить");
+    AppendMenuW(lib, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(lib, MF_STRING, kMenuLibraryAdd, L"Добавить папку...");
+    const auto& folders = library_.Folders();
+    for (size_t i = 0; i < folders.size() && i < 100; ++i)
+        AppendMenuW(libFolders, MF_STRING, kMenuLibraryFolderFirst + i, folders[i].wstring().c_str());
+    if (folders.empty()) AppendMenuW(libFolders, MF_STRING | MF_GRAYED, 0, L"Папок нет");
+    AppendMenuW(lib, MF_POPUP, reinterpret_cast<UINT_PTR>(libFolders), L"Папки (нажмите, чтобы убрать)");
+    AppendMenuW(lib, MF_STRING | (library_.AutoScan() ? MF_CHECKED : 0), kMenuLibraryAuto,
+                L"Искать новую музыку автоматически");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(lib), L"Библиотека");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     const auto& ids = themes_.BuiltinIds();
     for (size_t i = 0; i < ids.size(); ++i) {
@@ -480,6 +589,18 @@ void App::ShowContextMenu(POINT screen) {
     if (!view_.mini)
         AppendMenuW(menu, MF_STRING | (view_.playlistOpen ? MF_CHECKED : 0), kMenuPlaylist, L"Плейлист");
     AppendMenuW(menu, MF_STRING | (view_.mini ? MF_CHECKED : 0), kMenuMini, L"Мини-режим");
+    AppendMenuW(menu, MF_STRING | (miniOnTop_ ? MF_CHECKED : 0), kMenuMiniTop, L"Мини-плеер поверх окон");
+    AppendMenuW(menu, MF_STRING | (player_.Normalize() ? MF_CHECKED : 0), kMenuNormalize,
+                L"Выравнивать громкость (ReplayGain)");
+
+    // Плагины: их собственные пункты и раздел управления
+    HMENU plug = CreatePopupMenu();
+    const auto& items = plugins_.MenuItems();
+    for (size_t i = 0; i < items.size() && i < 500; ++i)
+        AppendMenuW(plug, MF_STRING, kMenuPluginItemFirst + i, ::text::Utf8ToWide(items[i].title).c_str());
+    if (!items.empty()) AppendMenuW(plug, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(plug, MF_STRING, kMenuPlugins, L"Управление плагинами");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(plug), L"Плагины");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuExit, L"Выход");
 
@@ -497,13 +618,86 @@ void App::ShowContextMenu(POINT screen) {
         case kMenuPlaylist: view_.TogglePlaylist(Now()); break;
         case kMenuMini: view_.ToggleMini(Now()); break;
         case kMenuExit: CloseWindow(); break;
+        case kMenuNormalize: player_.SetNormalize(!player_.Normalize()); break;
+        case kMenuMiniTop:
+            miniOnTop_ = !miniOnTop_;
+            ApplyTopmost();
+            break;
+        case kMenuLibraryAll: LoadLibraryPlaylist(true); break;
+        case kMenuLibraryRescan: StartLibraryScan(); break;
+        case kMenuLibraryAdd: AddLibraryFolder(); break;
+        case kMenuLibraryAuto:
+            library_.SetAutoScan(!library_.AutoScan());
+            RestartWatcher();
+            if (library_.AutoScan()) StartLibraryScan();
+            library_.Save(libraryPath_);
+            break;
+        case kMenuPlugins:
+            plugins_.Discover({exeDir_ / L"plugins", UserPluginsDir()});
+            RebuildPluginRows();
+            view_.ShowPanelTab(1, Now());
+            break;
         default:
+            if (cmd >= kMenuLibraryFolderFirst && cmd < kMenuLibraryFolderFirst + folders.size()) {
+                const std::filesystem::path dir = folders[cmd - kMenuLibraryFolderFirst];
+                const std::wstring q = L"Убрать папку из библиотеки?\n" + dir.wstring() +
+                                       L"\n\nФайлы на диске не удаляются.";
+                if (MessageBoxW(hwnd_, q.c_str(), L"Библиотека", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                    library_.RemoveFolder(dir);
+                    library_.Save(libraryPath_);
+                    RestartWatcher();
+                }
+            }
+            if (cmd >= kMenuPluginItemFirst && cmd < kMenuPluginItemFirst + items.size())
+                plugins_.InvokeMenuItem(cmd - kMenuPluginItemFirst);
             if (cmd >= kMenuThemeFirst && cmd < kMenuThemeFirst + ids.size()) {
                 userTheme_ = false;
                 ApplyTheme(themes_.Make(ids[cmd - kMenuThemeFirst]), true);
             }
             break;
     }
+    MarkDirty();
+    Invalidate();
+}
+
+// ---------------- меню строки плейлиста ----------------
+
+void App::ShowRowMenu(int row, view::Point at) {
+    const pm::Playlist& pl = player_.GetPlaylist();
+    if (row < 0 || row >= pl.Size()) return;
+    const pm::PlayerState ps = player_.GetState();
+    const bool current = row == ps.index;
+    HMENU menu = CreatePopupMenu();
+    AppendMenuW(menu, MF_STRING, kMenuRowPlay, current && ps.playing ? L"Пауза" : L"Играть");
+    AppendMenuW(menu, MF_STRING | (current ? MF_GRAYED : 0), kMenuRowNext, L"Играть следующим");
+    AppendMenuW(menu, MF_STRING, kMenuRowShow, L"Показать в папке");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, kMenuRowRemove, L"Убрать из плейлиста");
+    POINT pt{ToPx(at.x), ToPx(at.y)};
+    ClientToScreen(hwnd_, &pt);
+    SetForegroundWindow(hwnd_);
+    const UINT cmd = static_cast<UINT>(
+        TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, hwnd_, nullptr));
+    DestroyMenu(menu);
+    const std::filesystem::path path = pl.At(row).path;
+    switch (cmd) {
+        case kMenuRowPlay:
+            if (current) player_.Toggle();
+            else player_.PlayIndex(row);
+            break;
+        case kMenuRowNext: player_.PlayNext(row); break;
+        case kMenuRowShow:
+            // Проводник с выделенным файлом
+            if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(path.c_str())) {
+                SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0);
+                ILFree(pidl);
+            }
+            break;
+        case kMenuRowRemove: player_.Remove(row); break;
+        default: return;
+    }
+    RebuildRows();
+    MarkDirty();
     Invalidate();
 }
 
@@ -640,6 +834,26 @@ void App::RenderFrame() {
         }
     }
     view_.Update(t, snap, spectrum, visible_);
+    ApplyTopmost();
+    taskbar_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
+    if (lastPlaying_ != (ps.playing ? 1 : 0)) {
+        if (lastPlaying_ >= 0) plugins_.NotifyPlayState(ps.playing);
+        lastPlaying_ = ps.playing ? 1 : 0;
+    }
+
+    // Раз в секунду: мини-режим во время игры и свёрнутое окно (полоса на панели задач)
+    const bool wantTicks = view_.WantsSecondTicks() || (ps.playing && !visible_);
+    if (wantTicks != tickTimer_) {
+        if (wantTicks) SetTimer(hwnd_, kTickTimer, 1000, nullptr);
+        else KillTimer(hwnd_, kTickTimer);
+        tickTimer_ = wantTicks;
+    }
+    // Во время игры позиция сохраняется раз в 30 секунд; на паузе таймера нет
+    if (ps.playing != saveTick_) {
+        if (ps.playing) SetTimer(hwnd_, kSaveTick, 30000, nullptr);
+        else KillTimer(hwnd_, kSaveTick);
+        saveTick_ = ps.playing;
+    }
     if (!visible_) return;
 
     ID2D1DeviceContext* dc = renderer_.BeginFrame();
@@ -649,17 +863,12 @@ void App::RenderFrame() {
     in.systemBackdrop = acrylicOn_;
     in.rows = &rows_;
     in.countText = countText_;
-    in.emptyHint = L"Перетащите сюда файлы или папку";
+    in.emptyHint = scanner_.Running() ? L"Ищу музыку в папках библиотеки..." : L"Перетащите сюда файлы или папку";
+    in.plugins = &pluginRows_;
+    in.pluginCountText = pluginCountText_;
+    in.pluginsHint = L"Плагинов пока нет. Положите папку плагина в plugins рядом с PlayerMoon.exe";
     painter_.Paint(dc, view_, in);
     if (!renderer_.EndFrame()) dirty_ = true;  // устройство пересоздано - повторить кадр
-
-    // В мини-режиме во время игры - один кадр в секунду по таймеру, без цикла кадров
-    const bool wantTicks = view_.WantsSecondTicks();
-    if (wantTicks != tickTimer_) {
-        if (wantTicks) SetTimer(hwnd_, kTickTimer, 1000, nullptr);
-        else KillTimer(hwnd_, kTickTimer);
-        tickTimer_ = wantTicks;
-    }
 }
 
 void App::MessageLoop() {
@@ -705,6 +914,11 @@ LRESULT CALLBACK App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == taskbarCreatedMsg_ && taskbarCreatedMsg_) {
+        taskbar_.Attach(hwnd_, renderer_.Factory(), renderer_.Wic());
+        Invalidate();
+        return 0;
+    }
     switch (msg) {
         case WM_NCCALCSIZE:
             // Клиентская область = всё окно: рамку и заголовок рисуем сами
@@ -761,6 +975,7 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_LBUTTONUP:
             ReleaseCapture();
             view_.OnMouseUp(ToDip(lp), Now());
+            MarkDirty();
             Invalidate();
             return 0;
         case WM_RBUTTONUP:
@@ -779,6 +994,7 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             const float k = 96.f / dpi_;
             view_.OnWheel({static_cast<float>(pt.x) * k, static_cast<float>(pt.y) * k},
                           static_cast<float>(GET_WHEEL_DELTA_WPARAM(wp)) / WHEEL_DELTA, Now());
+            MarkDirty();
             Invalidate();
             return 0;
         }
@@ -797,6 +1013,7 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
                     break;
                 default: break;
             }
+            MarkDirty();
             Invalidate();
             return 0;
         }
@@ -824,6 +1041,39 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_TIMER:
             if (wp == kTickTimer) Invalidate();
+            if (wp == kSaveTimer) {
+                KillTimer(hwnd_, kSaveTimer);
+                SaveCurrentState();
+            }
+            if (wp == kSaveTick) SaveCurrentState();
+            return 0;
+        case WM_COMMAND:
+            // Кнопки в превью окна на панели задач
+            if (HIWORD(wp) == THBN_CLICKED) {
+                switch (LOWORD(wp)) {
+                    case Taskbar::kPrev: Prev(); break;
+                    case Taskbar::kPlayPause: TogglePlay(); break;
+                    case Taskbar::kNext: Next(); break;
+                    default: break;
+                }
+                MarkDirty();
+                return 0;
+            }
+            break;
+        case WM_COPYDATA:
+            HandleCopyData(reinterpret_cast<const COPYDATASTRUCT*>(lp));
+            return TRUE;
+        case WM_MOVING:
+            SnapToEdges(reinterpret_cast<RECT*>(lp));
+            return TRUE;
+        case WM_EXITSIZEMOVE:
+            MarkDirty();  // новое место окна
+            return 0;
+        case kLibraryMessage:
+            OnLibraryScanned();
+            return 0;
+        case kWatchMessage:
+            StartLibraryScan();
             return 0;
         case kWakeMessage:
             wakePosted_ = false;
@@ -837,23 +1087,279 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
         case WM_ACTIVATE:
+            // Вернулись из папки плагинов - перечитать список
+            if (LOWORD(wp) != WA_INACTIVE && pluginsRefreshPending_) {
+                pluginsRefreshPending_ = false;
+                plugins_.Discover({exeDir_ / L"plugins", UserPluginsDir()});
+                RebuildPluginRows();
+            }
             Invalidate();
             break;
         case WM_ENDSESSION:
-            if (wp) SaveCurrentState();
+            if (wp) {
+                SaveCurrentState();
+                library_.Save(libraryPath_);
+            }
             return 0;
         case WM_CLOSE:
             SaveCurrentState();
+            library_.Save(libraryPath_);
             DestroyWindow(hwnd_);
             return 0;
         case WM_DESTROY:
             for (int id = kHotPlay; id <= kHotStop; ++id) UnregisterHotKey(hwnd_, id);
             KillTimer(hwnd_, kTickTimer);
+            KillTimer(hwnd_, kSaveTimer);
+            KillTimer(hwnd_, kSaveTick);
             PostQuitMessage(0);
             return 0;
         default: break;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
+}
+
+// ---------------- один экземпляр ----------------
+
+bool App::ForwardToRunningInstance() {
+    // Первый экземпляр мог ещё не создать окно - ждём до двух секунд
+    HWND other = nullptr;
+    for (int i = 0; i < 40 && !other; ++i) {
+        other = FindWindowW(kClassName, nullptr);
+        if (!other) Sleep(50);
+    }
+    if (!other) return false;
+    // Пути через '\n' (в путях Windows его не бывает); пустой список - просто показать окно
+    std::wstring data;
+    int argc = 0;
+    if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        for (int i = 1; i < argc; ++i) {
+            if (!data.empty()) data += L'\n';
+            data += argv[i];
+        }
+        LocalFree(argv);
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(other, &pid);
+    AllowSetForegroundWindow(pid);  // чтобы окно могло выйти на передний план
+    COPYDATASTRUCT cds{};
+    cds.dwData = kCopyDataPaths;
+    cds.cbData = static_cast<DWORD>((data.size() + 1) * sizeof(wchar_t));
+    cds.lpData = data.data();
+    DWORD_PTR result = 0;
+    return SendMessageTimeoutW(other, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&cds), SMTO_ABORTIFHUNG, 5000,
+                               &result) != 0;
+}
+
+void App::HandleCopyData(const COPYDATASTRUCT* cds) {
+    if (!cds || cds->dwData != kCopyDataPaths || cds->cbData < sizeof(wchar_t)) return;
+    const std::wstring data(static_cast<const wchar_t*>(cds->lpData), cds->cbData / sizeof(wchar_t) - 1);
+    std::vector<std::filesystem::path> paths;
+    size_t start = 0;
+    while (start < data.size()) {
+        const size_t end = std::min(data.find(L'\n', start), data.size());
+        if (end > start) paths.emplace_back(data.substr(start, end - start));
+        start = end + 1;
+    }
+    if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    SetForegroundWindow(hwnd_);
+    if (paths.empty()) return;
+    // Проводник запускает по экземпляру на каждый выделенный файл: файлы, пришедшие подряд
+    // (меньше чем через 1.5 с), дописываются к только что открытым
+    const double now = Now();
+    const bool append = now - lastCopyData_ < 1.5;
+    lastCopyData_ = now;
+    LoadPaths(paths, append);
+}
+
+// ---------------- библиотека ----------------
+
+void App::InitLibrary(bool firstRun) {
+    libraryPath_ = statePath_.parent_path() / L"library.json";
+    const bool loaded = library_.Load(libraryPath_);
+    if (!loaded || (firstRun && library_.Folders().empty())) {
+        // Первый запуск: стандартные папки, где обычно лежит музыка
+        auto known = [](REFKNOWNFOLDERID id) {
+            std::filesystem::path p;
+            PWSTR s = nullptr;
+            if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &s))) p = s;
+            CoTaskMemFree(s);
+            return p;
+        };
+        std::vector<std::filesystem::path> candidates = {known(FOLDERID_Music), known(FOLDERID_Downloads)};
+        const std::filesystem::path oneDrive = known(FOLDERID_SkyDrive);
+        if (!oneDrive.empty()) {
+            candidates.push_back(oneDrive / L"Music");
+            candidates.push_back(oneDrive / L"Музыка");
+        }
+        for (const auto& c : candidates) {
+            std::error_code ec;
+            if (!c.empty() && std::filesystem::is_directory(c, ec)) library_.AddFolder(c);
+        }
+        library_.Save(libraryPath_);
+    }
+    // Плейлист пуст, а библиотека уже знает треки (кэш прошлого запуска) - сразу показываем их
+    if (player_.GetPlaylist().Empty() && !library_.Tracks().empty()) LoadLibraryPlaylist(false);
+    RestartWatcher();
+    if (library_.AutoScan()) StartLibraryScan();
+}
+
+void App::RestartWatcher() {
+    watcher_.Stop();
+    if (library_.AutoScan()) watcher_.Start(library_.Folders(), hwnd_, kWatchMessage);
+}
+
+void App::StartLibraryScan() {
+    if (library_.Folders().empty()) return;
+    HWND hwnd = hwnd_;
+    // Уже идёт - повторим по окончании (изменения могли прийти посреди обхода)
+    if (!scanner_.Start(library_.Folders(), library_.Tracks(), [hwnd] { PostMessageW(hwnd, kLibraryMessage, 0, 0); }))
+        rescanPending_ = true;
+    Invalidate();
+}
+
+void App::OnLibraryScanned() {
+    std::vector<pm::LibraryTrack> tracks;
+    if (!scanner_.Take(tracks)) return;
+    // Новые для библиотеки файлы (не просто отсутствующие в плейлисте: убранное руками не возвращается)
+    std::set<std::filesystem::path> known;
+    for (const auto& t : library_.Tracks()) known.insert(t.path);
+    std::vector<pm::PlaylistEntry> fresh;
+    for (const auto& t : tracks)
+        if (!known.count(t.path)) fresh.push_back({t.path, t.meta});
+    const bool wasEmpty = library_.Tracks().empty();
+    library_.SetTracks(std::move(tracks));
+    library_.Save(libraryPath_);
+
+    if (player_.GetPlaylist().Empty() && !library_.Tracks().empty()) {
+        LoadLibraryPlaylist(false);
+    } else if (playlistFromLibrary_ && !fresh.empty() && !wasEmpty) {
+        player_.LoadTracks(fresh, true);
+        RebuildRows();
+        MarkDirty();
+    }
+    if (rescanPending_) {
+        rescanPending_ = false;
+        StartLibraryScan();
+    }
+    Invalidate();
+}
+
+void App::LoadLibraryPlaylist(bool play) {
+    if (library_.Tracks().empty()) return;
+    player_.LoadTracks(library_.Entries());
+    playlistFromLibrary_ = true;
+    RebuildRows();
+    if (play) player_.PlayIndex(0);
+    else player_.OpenAt(0, 0, false);
+    MarkDirty();
+    Invalidate();
+}
+
+void App::AddLibraryFolder() {
+    auto paths = PickPaths(hwnd_, true, false, nullptr, nullptr);
+    if (paths.empty()) return;
+    if (library_.AddFolder(paths[0])) {
+        library_.Save(libraryPath_);
+        RestartWatcher();
+        StartLibraryScan();
+    }
+}
+
+void App::LearnFolders(const std::vector<std::filesystem::path>& paths) {
+    bool changed = false;
+    for (const auto& p : paths) changed = library_.LearnFrom(p) || changed;
+    if (!changed) return;
+    library_.Save(libraryPath_);
+    RestartWatcher();
+    StartLibraryScan();
+}
+
+// ---------------- плагины ----------------
+
+std::filesystem::path App::UserPluginsDir() const {
+    // Рядом с exe, если туда можно писать (там же state.json), иначе в %APPDATA%\PlayerMoon
+    return statePath_.parent_path() / L"plugins";
+}
+
+void App::InitPlugins(const std::set<std::string>& enabled) {
+    plugins_.SetDataRoot(statePath_.parent_path() / L"plugins-data");
+    plugins_.SetHost({[this] {
+                          const pm::PlayerState ps = player_.GetState();
+                          return PmPlayback{ps.playing ? 1 : 0, ps.index, ps.count, ps.position, ps.duration,
+                                            ps.volume};
+                      },
+                      [this](int cmd) {
+                          switch (cmd) {
+                              case PM_CMD_TOGGLE: player_.Toggle(); break;
+                              case PM_CMD_PLAY: player_.Play(); break;
+                              case PM_CMD_PAUSE: player_.Pause(); break;
+                              case PM_CMD_NEXT: player_.Next(); break;
+                              case PM_CMD_PREV: player_.Prev(); break;
+                              default: break;
+                          }
+                          Invalidate();
+                      },
+                      [this](double s) {
+                          player_.Seek(s);
+                          Invalidate();
+                      }});
+    plugins_.Discover({exeDir_ / L"plugins", UserPluginsDir()});
+    plugins_.EnableSaved(enabled);
+    RebuildPluginRows();
+}
+
+void App::RebuildPluginRows() {
+    pluginRows_.clear();
+    std::vector<bool> on;
+    int enabled = 0;
+    for (const auto& p : plugins_.Plugins()) {
+        pluginRows_.push_back({::text::Utf8ToWide(p.name), ::text::Utf8ToWide(p.version),
+                               ::text::Utf8ToWide(p.description), ::text::Utf8ToWide(p.error)});
+        on.push_back(p.enabled);
+        enabled += p.enabled ? 1 : 0;
+    }
+    wchar_t buf[64];
+    swprintf(buf, 64, L"включено %d из %d", enabled, static_cast<int>(pluginRows_.size()));
+    pluginCountText_ = buf;
+    view_.SetPlugins(on, Now());
+    Invalidate();
+}
+
+void App::TogglePlugin(int index) {
+    const auto& list = plugins_.Plugins();
+    if (index < 0 || index >= static_cast<int>(list.size())) return;
+    const pm::PluginInfo& p = list[static_cast<size_t>(index)];
+    if (!p.enabled) {
+        // Плагин - чужой код внутри плеера: включение только с явного согласия
+        const std::wstring q = L"Включить плагин «" + ::text::Utf8ToWide(p.name) +
+                               L"»?\n\nПлагин работает внутри PlayerMoon с правами вашей учётной записи. "
+                               L"Включайте только плагины, которым доверяете.";
+        if (MessageBoxW(hwnd_, q.c_str(), L"Плагины", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    }
+    plugins_.SetEnabled(static_cast<size_t>(index), !p.enabled);
+    RebuildPluginRows();
+    MarkDirty();
+}
+
+void App::OpenPluginsFolder() {
+    const std::filesystem::path dir = UserPluginsDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    ShellExecuteW(hwnd_, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    pluginsRefreshPending_ = true;
+}
+
+void App::NotifyPluginsTrack() {
+    const pm::NowPlaying& np = player_.Current();
+    if (np.index < 0 || !player_.GetState().hasTrack) {
+        plugins_.NotifyTrack(nullptr);
+        return;
+    }
+    // Строки живут до конца вызова - как требует интерфейс плагинов
+    const std::string path = ::text::PathToUtf8(np.path);
+    PmTrack t{path.c_str(), np.title.c_str(), np.tags.artist.c_str(), np.tags.album.c_str(),
+              player_.GetState().duration};
+    plugins_.NotifyTrack(&t);
 }
 
 }  // namespace ui

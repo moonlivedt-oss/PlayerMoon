@@ -16,6 +16,11 @@ struct TagInfo {
     std::string artist;
     std::string album;
     double duration = 0;  // секунды, 0 - неизвестна
+    int track = 0;        // номер трека в альбоме (TRCK, TRACKNUMBER), 0 - нет
+    // Выравнивание громкости ReplayGain (TXXX в ID3v2, REPLAYGAIN_* в Vorbis Comment)
+    bool hasReplayGain = false;
+    float replayGainDb = 0;  // REPLAYGAIN_TRACK_GAIN
+    float replayPeak = 0;    // REPLAYGAIN_TRACK_PEAK, 0 - нет
     std::vector<uint8_t> cover;
     std::string coverMime;  // image/jpeg, image/png
 };
@@ -32,6 +37,13 @@ public:
 // wantCover = false - обложка не читается (быстрое сканирование плейлиста)
 bool ReadTags(const std::filesystem::path& path, TagInfo& out, bool wantCover);
 bool ReadTags(ByteSource& src, TagInfo& out, bool wantCover);
+
+// Множитель громкости по ReplayGain: 10^(дБ/20), без перегрузки по пику, в пределах [0.1, 4]
+float ReplayGainFactor(const TagInfo& t);
+
+// Обложка из папки трека, если в тегах её нет: cover, folder, front, album (.jpg, .jpeg, .png),
+// без учёта регистра. false - картинки нет.
+bool ReadFolderCover(const std::filesystem::path& audio, std::vector<uint8_t>& out, std::string& mime);
 
 // Поддерживаемые сейчас расширения (нижний регистр, с точкой)
 bool IsSupportedAudio(const std::filesystem::path& path);

@@ -106,6 +106,36 @@ int Playlist::Advance(bool automatic) {
     return current_;
 }
 
+int Playlist::PeekNext() const {
+    if (entries_.empty() || repeat_ == Repeat::One || current_ < 0) return -1;
+    if (shuffle_) {
+        if (order_.size() != entries_.size()) return -1;
+        if (orderPos_ + 1 < static_cast<int>(order_.size())) return order_[static_cast<size_t>(orderPos_ + 1)];
+        return -1;
+    }
+    if (current_ + 1 < Size()) return current_ + 1;
+    return repeat_ == Repeat::All ? 0 : -1;
+}
+
+void Playlist::PlayNext(int index) {
+    if (index < 0 || index >= Size() || index == current_) return;
+    if (shuffle_) {
+        if (order_.size() != entries_.size()) BuildOrder(current_, -1);
+        const auto it = std::find(order_.begin(), order_.end(), index);
+        if (it != order_.end()) {
+            if (it - order_.begin() < orderPos_) --orderPos_;
+            order_.erase(it);
+        }
+        order_.insert(order_.begin() + std::min<int>(orderPos_ + 1, static_cast<int>(order_.size())), index);
+        return;
+    }
+    // Без перемешивания порядок - это сам список: переносим запись
+    PlaylistEntry e = std::move(entries_[static_cast<size_t>(index)]);
+    entries_.erase(entries_.begin() + index);
+    if (index < current_) --current_;
+    entries_.insert(entries_.begin() + current_ + 1, std::move(e));
+}
+
 int Playlist::Back() {
     if (entries_.empty()) return -1;
     if (shuffle_) {

@@ -67,7 +67,7 @@ add_custom_target(pm_assets DEPENDS ${PM_GEN_DIR}/builtin_assets.h)
 # ---------- Ядро ----------
 add_library(pm_core STATIC
     core/json.cpp core/playlist.cpp core/tags.cpp core/fft.cpp core/state.cpp
-    core/decoder.cpp core/engine.cpp core/player.cpp core/text.cpp)
+    core/decoder.cpp core/engine.cpp core/player.cpp core/text.cpp core/library.cpp core/plugins.cpp)
 target_include_directories(pm_core PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_core PUBLIC pm_miniaudio)
 target_compile_options(pm_core PRIVATE ${PM_WARNINGS})
@@ -89,10 +89,26 @@ target_include_directories(pm_view PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_view PUBLIC pm_theme pm_core pm_motion)
 target_compile_options(pm_view PRIVATE ${PM_WARNINGS})
 
+# ---------- Плагины ----------
+# Пример плагина: журнал прослушиваний. Кладётся в plugins/history рядом с exe.
+add_library(pm_plugin_history SHARED plugins/history/history.cpp)
+target_include_directories(pm_plugin_history PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_options(pm_plugin_history PRIVATE ${PM_WARNINGS})
+set_target_properties(pm_plugin_history PROPERTIES OUTPUT_NAME history PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/history
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/history
+    CXX_VISIBILITY_PRESET hidden)
+if(WIN32)
+    target_link_libraries(pm_plugin_history PRIVATE shell32)
+endif()
+add_custom_command(TARGET pm_plugin_history POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/plugins/history/plugin.json
+        ${CMAKE_BINARY_DIR}/plugins/history/plugin.json)
+
 # ---------- Тесты ----------
 add_executable(pm_tests tests/main.cpp tests/test_motion.cpp tests/test_json.cpp tests/test_theme.cpp
     tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp
-    tests/test_view.cpp)
+    tests/test_view.cpp tests/test_plugins.cpp)
 target_link_libraries(pm_tests PRIVATE pm_view pm_theme pm_core pm_motion)
 target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})
 # GCC 13 даёт ложное срабатывание stringop-overflow на vector::push_back при -O3 в тестах,
@@ -100,7 +116,9 @@ target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(pm_tests PRIVATE -Wno-stringop-overflow)
 endif()
-target_compile_definitions(pm_tests PRIVATE PM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_definitions(pm_tests PRIVATE PM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    PM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
+add_dependencies(pm_tests pm_plugin_history)
 enable_testing()
 add_test(NAME pm_tests COMMAND pm_tests)
 
@@ -109,7 +127,8 @@ if(WIN32)
     file(GLOB PM_UI_SOURCES CONFIGURE_DEPENDS ui/*.cpp)
     add_executable(PlayerMoon WIN32 ${PM_UI_SOURCES} ui/res/app.rc)
     target_link_libraries(PlayerMoon PRIVATE pm_view pm_theme pm_core pm_motion
-        d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme)
+        d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme advapi32 gdi32)
+    add_dependencies(PlayerMoon pm_plugin_history)
     target_compile_options(PlayerMoon PRIVATE ${PM_WARNINGS})
     target_link_options(PlayerMoon PRIVATE -municode)
     set_target_properties(PlayerMoon PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

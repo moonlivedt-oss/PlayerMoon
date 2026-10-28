@@ -59,6 +59,8 @@ public:
     // Папка сканируется вглубь, файлы сортируются по имени (с учётом чисел). Возвращает число добавленных.
     int LoadFolder(const std::filesystem::path& dir, bool append = false);
     int LoadFiles(const std::vector<std::filesystem::path>& files, bool append = false);
+    // Готовые записи (теги уже прочитаны, например из библиотеки)
+    int LoadTracks(const std::vector<PlaylistEntry>& tracks, bool append = false);
     const Playlist& GetPlaylist() const { return playlist_; }
 
     // ----- управление -----
@@ -73,6 +75,13 @@ public:
     void SetMuted(bool muted);
     void SetRepeat(Repeat r);
     void SetShuffle(bool on);
+    // Выравнивание громкости по ReplayGain (по умолчанию включено)
+    void SetNormalize(bool on);
+    bool Normalize() const { return normalize_; }
+    // Убрать трек из плейлиста. Если он играет - начинается следующий (с тем же состоянием пуска).
+    void Remove(int index);
+    // Трек пойдёт сразу после текущего
+    void PlayNext(int index);
     // Восстановление после запуска: открыть трек и встать на позицию без звука
     bool OpenAt(int index, double position, bool play);
 
@@ -90,6 +99,11 @@ public:
 
 private:
     bool OpenTrack(int index, double position, int direction);
+    // Теги, обложка (из тегов или из папки) и номер для нового текущего трека
+    void FillNowPlaying(int index, int direction);
+    // Открыть заранее трек, который пойдёт следующим (бесшовный переход)
+    void PreloadNext();
+    float TrackGain(const TagInfo& tags) const { return normalize_ ? ReplayGainFactor(tags) : 1.f; }
     void ApplyVolume();
 
     Engine engine_;
@@ -99,6 +113,8 @@ private:
     float volume_ = 0.7f;
     bool muted_ = false;
     bool ready_ = false;
+    bool normalize_ = true;
+    int queued_ = -1;  // индекс трека, открытого заранее в движке
 };
 
 // Сравнение имён «как человек»: «Трек 2» раньше «Трек 10»
