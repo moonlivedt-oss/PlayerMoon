@@ -1,0 +1,763 @@
+{
+  "_info": {
+    "source": "mockup/index.html, блок theme:begin..theme:end",
+    "units": "размеры в px (DIP при 100%), длительности в мс, цвета #RRGGBBAA",
+    "font": [
+      "Segoe UI Variable Text",
+      "Segoe UI Variable Display",
+      "Segoe UI"
+    ]
+  },
+  "glass": {
+    "effect": {
+      "backdrop": "acrylic",
+      "tint": 0.42,
+      "blur": 40,
+      "saturate": 1.6,
+      "noise": 0.05,
+      "cover-ambient": 0.6,
+      "cover-ambient-blur": 36,
+      "grid": 0,
+      "hover-scale": 1.08,
+      "press-scale": 0.9,
+      "thumb-idle": 1,
+      "thumb-hover": 1.45,
+      "text-shift-x": 0,
+      "text-shift-y": 10,
+      "spin": 0
+    },
+    "color": {
+      "win-base": "#14141E8C",
+      "win-border": "#FFFFFF24",
+      "text": "#FFFFFFFF",
+      "text-2": "#FFFFFFBD",
+      "text-3": "#FFFFFF8F",
+      "accent": "#FFFFFFFF",
+      "accent-2": "#FFFFFFFF",
+      "btn": "#FFFFFF00",
+      "btn-hover": "#FFFFFF21",
+      "btn-press": "#FFFFFF38",
+      "play": "#FFFFFFF0",
+      "on-play": "#16161FFF",
+      "play-ring": "#FFFFFF00",
+      "track": "#FFFFFF33",
+      "fill": "#FFFFFFFF",
+      "fill-2": "#FFFFFFFF",
+      "thumb": "#FFFFFFFF",
+      "panel": "#0E0E1652",
+      "panel-border": "#FFFFFF1A",
+      "row-hover": "#FFFFFF14",
+      "row-active": "#FFFFFF26",
+      "viz-a": "#FFFFFFEB",
+      "viz-b": "#FFFFFF47",
+      "glow": "#FFFFFF00",
+      "scrim": "#00000000",
+      "focus": "#FFFFFFBF",
+      "close-hover": "#C42B1CFF"
+    },
+    "radius": {
+      "win": 14,
+      "cover": 18,
+      "btn": 999,
+      "play": 999,
+      "row": 10,
+      "track": 999,
+      "panel": 0,
+      "mini": 14,
+      "mini-cover": 10
+    },
+    "shadow": {
+      "win": [
+        {
+          "x": 0,
+          "y": 24,
+          "blur": 64,
+          "spread": 0,
+          "color": "#00000073",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "blur": 8,
+          "spread": 0,
+          "color": "#00000040",
+          "inset": false
+        }
+      ],
+      "cover": [
+        {
+          "x": 0,
+          "y": 22,
+          "blur": 44,
+          "spread": -10,
+          "color": "#0000008C",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 8,
+          "blur": 22,
+          "spread": 0,
+          "color": "#0000004D",
+          "inset": false
+        }
+      ],
+      "btn-active": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 1,
+          "blur": 4,
+          "spread": 0,
+          "color": "#00000059",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "win": 26,
+      "section": 16,
+      "controls": 12,
+      "row": 12
+    },
+    "font": {
+      "fs-title": 21,
+      "fw-title": 600,
+      "ls-title": -0.2,
+      "fs-artist": 14,
+      "fw-artist": 500,
+      "ls-artist": 0,
+      "tt-artist": "none",
+      "fs-album": 12,
+      "fs-time": 12,
+      "fs-row": 14,
+      "fs-row-sub": 12,
+      "fs-caps": 11,
+      "fs-mini-title": 14,
+      "fs-heading": 15
+    },
+    "size": {
+      "win-w": 420,
+      "win-h": 680,
+      "mini-w": 360,
+      "mini-h": 88,
+      "playlist-w": 360,
+      "titlebar": 40,
+      "cover": 292,
+      "art": 292,
+      "btn": 42,
+      "play": 64,
+      "icon": 22,
+      "icon-stroke": 2,
+      "track": 4,
+      "track-hover": 6,
+      "thumb": 12,
+      "viz-h": 40,
+      "row": 54,
+      "mini-cover": 60
+    },
+    "duration": {
+      "fast": 150,
+      "base": 220,
+      "slow": 350,
+      "cover": 350,
+      "text": 260,
+      "bg": 350,
+      "resize": 320,
+      "press": 90,
+      "stagger": 22
+    },
+    "easing": {
+      "out": {
+        "type": "cubic-bezier",
+        "points": [
+          0.22,
+          1,
+          0.36,
+          1
+        ]
+      },
+      "in": {
+        "type": "cubic-bezier",
+        "points": [
+          0.4,
+          0,
+          1,
+          1
+        ]
+      },
+      "spring": {
+        "type": "sampled",
+        "note": "выборка пружины spring.*, равномерно по времени",
+        "samples": [
+          0,
+          0.0294,
+          0.1047,
+          0.209,
+          0.3284,
+          0.4521,
+          0.5721,
+          0.6826,
+          0.7801,
+          0.8628,
+          0.9302,
+          0.9828,
+          1.0218,
+          1.0487,
+          1.0654,
+          1.0739,
+          1.0759,
+          1.0731,
+          1.067,
+          1.0589,
+          1.0497,
+          1.0403,
+          1.0313,
+          1.023,
+          1.0158,
+          1.0097,
+          1.0047,
+          1.0008,
+          1
+        ]
+      }
+    },
+    "spring": {
+      "stiffness": 420,
+      "damping": 26
+    },
+    "visualizer": {
+      "bars": 48,
+      "gap": 3,
+      "attack": 18,
+      "fall": 1.5,
+      "glow": 0,
+      "style": "mirror"
+    },
+    "marquee": {
+      "speed": 30,
+      "pause": 1600,
+      "gap": 48
+    }
+  },
+  "neon": {
+    "effect": {
+      "backdrop": "none",
+      "tint": 0.26,
+      "blur": 0,
+      "saturate": 1,
+      "noise": 0,
+      "cover-ambient": 0.85,
+      "cover-ambient-blur": 48,
+      "grid": 0.05,
+      "hover-scale": 1.1,
+      "press-scale": 0.88,
+      "thumb-idle": 1,
+      "thumb-hover": 1.5,
+      "text-shift-x": 16,
+      "text-shift-y": 0,
+      "spin": 10
+    },
+    "color": {
+      "win-base": "#08070FFF",
+      "win-border": "#8C78FF38",
+      "text": "#F5F2FFFF",
+      "text-2": "#E2DCFFC2",
+      "text-3": "#CEC6FF94",
+      "accent": "#2EF2FFFF",
+      "accent-2": "#FF3DBBFF",
+      "btn": "#2EF2FF00",
+      "btn-hover": "#2EF2FF1A",
+      "btn-press": "#2EF2FF33",
+      "play": "#2EF2FF1A",
+      "on-play": "#2EF2FFFF",
+      "play-ring": "#2EF2FFFF",
+      "track": "#FFFFFF1A",
+      "fill": "#2EF2FFFF",
+      "fill-2": "#FF3DBBFF",
+      "thumb": "#FFFFFFFF",
+      "panel": "#0D0B1AF7",
+      "panel-border": "#2EF2FF59",
+      "row-hover": "#2EF2FF12",
+      "row-active": "#FF3DBB21",
+      "viz-a": "#2EF2FFFF",
+      "viz-b": "#FF3DBBFF",
+      "glow": "#2EF2FF99",
+      "scrim": "#04030A99",
+      "focus": "#2EF2FFFF",
+      "close-hover": "#FF3DBBFF"
+    },
+    "radius": {
+      "win": 10,
+      "cover": 999,
+      "btn": 12,
+      "play": 999,
+      "row": 8,
+      "track": 2,
+      "panel": 18,
+      "mini": 10,
+      "mini-cover": 999
+    },
+    "shadow": {
+      "win": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 1,
+          "color": "#2EF2FF14",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 60,
+          "spread": 0,
+          "color": "#2EF2FF1A",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 24,
+          "blur": 48,
+          "spread": 0,
+          "color": "#00000080",
+          "inset": false
+        }
+      ],
+      "cover": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 2,
+          "color": "#05040AE6",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 3,
+          "color": "#2EF2FF73",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 18,
+          "spread": 0,
+          "color": "#2EF2FF8C",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 12,
+          "spread": 0,
+          "color": "#2EF2FF59",
+          "inset": true
+        }
+      ],
+      "btn-active": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 14,
+          "spread": 0,
+          "color": "#2EF2FF80",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 10,
+          "spread": 0,
+          "color": "#2EF2FFE6",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "win": 24,
+      "section": 14,
+      "controls": 10,
+      "row": 12
+    },
+    "font": {
+      "fs-title": 22,
+      "fw-title": 700,
+      "ls-title": 0.2,
+      "fs-artist": 11,
+      "fw-artist": 600,
+      "ls-artist": 2.2,
+      "tt-artist": "uppercase",
+      "fs-album": 12,
+      "fs-time": 12,
+      "fs-row": 14,
+      "fs-row-sub": 11,
+      "fs-caps": 11,
+      "fs-mini-title": 14,
+      "fs-heading": 13
+    },
+    "size": {
+      "win-w": 420,
+      "win-h": 680,
+      "mini-w": 360,
+      "mini-h": 88,
+      "playlist-w": 420,
+      "titlebar": 40,
+      "cover": 176,
+      "art": 356,
+      "btn": 44,
+      "play": 68,
+      "icon": 22,
+      "icon-stroke": 2,
+      "track": 3,
+      "track-hover": 5,
+      "thumb": 12,
+      "viz-h": 356,
+      "row": 52,
+      "mini-cover": 60
+    },
+    "duration": {
+      "fast": 150,
+      "base": 240,
+      "slow": 350,
+      "cover": 350,
+      "text": 240,
+      "bg": 350,
+      "resize": 340,
+      "press": 90,
+      "stagger": 20
+    },
+    "easing": {
+      "out": {
+        "type": "cubic-bezier",
+        "points": [
+          0.16,
+          1,
+          0.3,
+          1
+        ]
+      },
+      "in": {
+        "type": "cubic-bezier",
+        "points": [
+          0.5,
+          0,
+          0.75,
+          0
+        ]
+      },
+      "spring": {
+        "type": "sampled",
+        "note": "выборка пружины spring.*, равномерно по времени",
+        "samples": [
+          0,
+          0.0272,
+          0.0993,
+          0.2025,
+          0.3246,
+          0.4549,
+          0.585,
+          0.7079,
+          0.819,
+          0.9149,
+          0.9941,
+          1.056,
+          1.1013,
+          1.1314,
+          1.1479,
+          1.153,
+          1.149,
+          1.1381,
+          1.1223,
+          1.1037,
+          1.0838,
+          1.0639,
+          1.045,
+          1.028,
+          1.0133,
+          1.0011,
+          0.9916,
+          0.9846,
+          1
+        ]
+      }
+    },
+    "spring": {
+      "stiffness": 380,
+      "damping": 20
+    },
+    "visualizer": {
+      "bars": 64,
+      "gap": 0,
+      "attack": 22,
+      "fall": 1.2,
+      "glow": 12,
+      "style": "radial"
+    },
+    "marquee": {
+      "speed": 36,
+      "pause": 1400,
+      "gap": 56
+    }
+  },
+  "minimal": {
+    "effect": {
+      "backdrop": "none",
+      "tint": 0.07,
+      "blur": 0,
+      "saturate": 1,
+      "noise": 0,
+      "cover-ambient": 0,
+      "cover-ambient-blur": 0,
+      "grid": 0,
+      "hover-scale": 1,
+      "press-scale": 0.95,
+      "thumb-idle": 0,
+      "thumb-hover": 1.2,
+      "text-shift-x": 0,
+      "text-shift-y": 18,
+      "spin": 0
+    },
+    "color": {
+      "win-base": "#F4F3EFFF",
+      "win-border": "#00000017",
+      "text": "#121212FF",
+      "text-2": "#4F4F49FF",
+      "text-3": "#6B6B64FF",
+      "accent": "#121212FF",
+      "accent-2": "#121212FF",
+      "btn": "#00000000",
+      "btn-hover": "#0000000E",
+      "btn-press": "#0000001A",
+      "play": "#121212FF",
+      "on-play": "#F4F3EFFF",
+      "play-ring": "#00000000",
+      "track": "#00000021",
+      "fill": "#121212FF",
+      "fill-2": "#121212FF",
+      "thumb": "#121212FF",
+      "panel": "#F4F3EF00",
+      "panel-border": "#0000001A",
+      "row-hover": "#0000000A",
+      "row-active": "#00000012",
+      "viz-a": "#121212D9",
+      "viz-b": "#121212D9",
+      "glow": "#00000000",
+      "scrim": "#00000000",
+      "focus": "#121212FF",
+      "close-hover": "#C42B1CFF"
+    },
+    "radius": {
+      "win": 6,
+      "cover": 2,
+      "btn": 6,
+      "play": 999,
+      "row": 0,
+      "track": 0,
+      "panel": 0,
+      "mini": 6,
+      "mini-cover": 2
+    },
+    "shadow": {
+      "win": [
+        {
+          "x": 0,
+          "y": 30,
+          "blur": 60,
+          "spread": 0,
+          "color": "#00000029",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "blur": 3,
+          "spread": 0,
+          "color": "#00000014",
+          "inset": false
+        }
+      ],
+      "cover": [
+        {
+          "x": 0,
+          "y": 1,
+          "blur": 2,
+          "spread": 0,
+          "color": "#0000001F",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "btn-active": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "win": 36,
+      "section": 18,
+      "controls": 8,
+      "row": 16
+    },
+    "font": {
+      "fs-title": 30,
+      "fw-title": 600,
+      "ls-title": -0.7,
+      "fs-artist": 15,
+      "fw-artist": 500,
+      "ls-artist": 0,
+      "tt-artist": "none",
+      "fs-album": 13,
+      "fs-time": 12,
+      "fs-row": 15,
+      "fs-row-sub": 12,
+      "fs-caps": 11,
+      "fs-mini-title": 15,
+      "fs-heading": 28
+    },
+    "size": {
+      "win-w": 420,
+      "win-h": 680,
+      "mini-w": 360,
+      "mini-h": 88,
+      "playlist-w": 420,
+      "titlebar": 40,
+      "cover": 300,
+      "art": 300,
+      "btn": 40,
+      "play": 52,
+      "icon": 22,
+      "icon-stroke": 1.6,
+      "track": 2,
+      "track-hover": 4,
+      "thumb": 10,
+      "viz-h": 22,
+      "row": 50,
+      "mini-cover": 64
+    },
+    "duration": {
+      "fast": 160,
+      "base": 240,
+      "slow": 320,
+      "cover": 320,
+      "text": 280,
+      "bg": 350,
+      "resize": 300,
+      "press": 100,
+      "stagger": 18
+    },
+    "easing": {
+      "out": {
+        "type": "cubic-bezier",
+        "points": [
+          0.25,
+          0.8,
+          0.25,
+          1
+        ]
+      },
+      "in": {
+        "type": "cubic-bezier",
+        "points": [
+          0.4,
+          0,
+          0.6,
+          1
+        ]
+      },
+      "spring": {
+        "type": "sampled",
+        "note": "выборка пружины spring.*, равномерно по времени",
+        "samples": [
+          0,
+          0.0233,
+          0.0817,
+          0.161,
+          0.2509,
+          0.344,
+          0.435,
+          0.5208,
+          0.5993,
+          0.6694,
+          0.7309,
+          0.7839,
+          0.8289,
+          0.8665,
+          0.8976,
+          0.9229,
+          0.9432,
+          0.9593,
+          0.9719,
+          0.9816,
+          0.9889,
+          0.9942,
+          0.9981,
+          1.0008,
+          1
+        ]
+      }
+    },
+    "spring": {
+      "stiffness": 300,
+      "damping": 30
+    },
+    "visualizer": {
+      "bars": 32,
+      "gap": 6,
+      "attack": 14,
+      "fall": 1.8,
+      "glow": 0,
+      "style": "lines"
+    },
+    "marquee": {
+      "speed": 26,
+      "pause": 2000,
+      "gap": 64
+    }
+  }
+}
