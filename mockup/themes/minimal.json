@@ -1,0 +1,207 @@
+{
+  "format": "playermoon-theme",
+  "version": 1,
+  "kind": "builtin",
+  "id": "minimal",
+  "name": "Минимал",
+  "settings": {
+    "skin": "minimal",
+    "layout": "editorial",
+    "playlist": "push",
+    "coverShape": "square",
+    "spin": 0,
+    "accent": "#121212",
+    "accent2": "#121212",
+    "accentFromCover": false,
+    "text": "#121212",
+    "textScale": 1,
+    "titleWeight": 600,
+    "mqSpeed": 26,
+    "backdrop": "solid",
+    "winColor": "#f4f3ef",
+    "winDensity": 1,
+    "tint": 0.07,
+    "blur": 0,
+    "noise": 0,
+    "grid": 0,
+    "radius": 6,
+    "shadow": "soft",
+    "ambient": 0,
+    "glow": 0,
+    "desk": "paper",
+    "deskColor": "#2b2d42",
+    "motion": "calm",
+    "speed": 1,
+    "stiffness": 300,
+    "damping": 30,
+    "coverFx": "slide",
+    "textFx": "wipe",
+    "btnFx": "press",
+    "playFx": "morph",
+    "vizStyle": "lines",
+    "vizColor": "mono",
+    "vizBars": 32,
+    "vizAttack": 14,
+    "vizFall": 1.8,
+    "vizGlow": 0
+  },
+  "material": {
+    "color": {
+      "winBorder": "#00000017",
+      "text2": "#4F4F49FF",
+      "text3": "#6B6B64FF",
+      "btn": "#00000000",
+      "btnHover": "#0000000E",
+      "btnPress": "#0000001A",
+      "play": {
+        "ref": "accent"
+      },
+      "onPlay": "#F4F3EFFF",
+      "playRing": "#00000000",
+      "track": "#00000021",
+      "thumb": {
+        "ref": "accent"
+      },
+      "panel": "#F4F3EF00",
+      "panelBorder": "#0000001A",
+      "rowHover": "#0000000A",
+      "rowActive": "#0000000F",
+      "rowLine": "#0000001A",
+      "scrim": "#F4F3EF99",
+      "closeHover": "#C42B1CFF",
+      "titleGlow": "#00000000"
+    },
+    "effect": {
+      "saturate": 1,
+      "coverAmbientBlur": 0,
+      "coverSheen": 0,
+      "thumbIdle": 0,
+      "thumbHover": 1.2,
+      "dot": 1
+    },
+    "radius": {
+      "btn": 6,
+      "play": 999,
+      "row": 0,
+      "track": 0,
+      "panel": 0,
+      "thumb": 0,
+      "dot": 0
+    },
+    "shadow": {
+      "cover": [
+        {
+          "x": 0,
+          "y": 1,
+          "blur": 2,
+          "spread": 0,
+          "color": "#0000001F",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "playHover": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "btnActive": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "section": 18,
+      "controls": 8,
+      "row": 16
+    },
+    "font": {
+      "lsTitle": -0.7,
+      "fsArtist": 15,
+      "fwArtist": 500,
+      "lsArtist": 0,
+      "ttArtist": "none",
+      "fsAlbum": 13,
+      "fsTime": 12,
+      "fsRow": 15,
+      "fsRowSub": 12,
+      "fsCaps": 11,
+      "fsMiniTitle": 15,
+      "fsHeading": 28,
+      "ttHeading": "none",
+      "lsHeading": -0.6
+    },
+    "size": {
+      "titlebar": 40,
+      "icon": 22,
+      "iconStroke": 1.6,
+      "track": 2,
+      "trackHover": 4,
+      "thumbW": 2,
+      "thumbH": 14,
+      "row": 50,
+      "miniCover": 64,
+      "dotW": 12,
+      "dotH": 2
+    },
+    "duration": {
+      "fast": 160,
+      "base": 240,
+      "slow": 320,
+      "cover": 320,
+      "text": 280,
+      "bg": 350,
+      "resize": 300,
+      "press": 100,
+      "stagger": 18
+    },
+    "easing": {
+      "out": [
+        0.25,
+        0.8,
+        0.25,
+        1
+      ],
+      "in": [
+        0.4,
+        0,
+        0.6,
+        1
+      ]
+    },
+    "marquee": {
+      "pause": 2000,
+      "gap": 64
+    }
+  }
+}

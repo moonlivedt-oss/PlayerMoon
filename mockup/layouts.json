@@ -1,0 +1,109 @@
+{
+  "_info": "Геометрия раскладок в px (DIP при 100%). Описание и различия - LAYOUTS.md.",
+  "layouts": {
+    "classic": {
+      "size": {
+        "winW": 420,
+        "winH": 680,
+        "playlistW": 360,
+        "cover": 292,
+        "art": 292,
+        "vizH": 40,
+        "play": 64,
+        "btn": 42
+      },
+      "spacing": {
+        "win": 26
+      },
+      "font": {
+        "fsTitle": 21
+      }
+    },
+    "stage": {
+      "size": {
+        "winW": 420,
+        "winH": 680,
+        "playlistW": 380,
+        "cover": 176,
+        "art": 356,
+        "vizH": 356,
+        "play": 68,
+        "btn": 44
+      },
+      "spacing": {
+        "win": 24
+      },
+      "font": {
+        "fsTitle": 22
+      }
+    },
+    "editorial": {
+      "size": {
+        "winW": 420,
+        "winH": 680,
+        "playlistW": 360,
+        "cover": 300,
+        "art": 300,
+        "vizH": 22,
+        "play": 52,
+        "btn": 40
+      },
+      "spacing": {
+        "win": 36
+      },
+      "font": {
+        "fsTitle": 30
+      }
+    },
+    "horizon": {
+      "size": {
+        "winW": 700,
+        "winH": 340,
+        "playlistW": 340,
+        "cover": 248,
+        "art": 248,
+        "vizH": 34,
+        "play": 52,
+        "btn": 38
+      },
+      "spacing": {
+        "win": 22
+      },
+      "font": {
+        "fsTitle": 22
+      }
+    }
+  },
+  "mini": {
+    "width": 360,
+    "height": 88,
+    "cornerRadius": "min(radius.win, 16)"
+  },
+  "coverShape": {
+    "square": {
+      "cover": 2,
+      "miniCover": 2
+    },
+    "rounded": {
+      "cover": 18,
+      "miniCover": 10
+    },
+    "circle": {
+      "cover": "circle",
+      "miniCover": "circle"
+    },
+    "vinyl": {
+      "cover": "circle",
+      "miniCover": "circle",
+      "grooves": {
+        "step": 5,
+        "line": 1,
+        "color": "#00000021"
+      },
+      "hole": {
+        "diameter": 22,
+        "ring": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "format": "playermoon-theme",
+  "version": 1,
+  "kind": "builtin",
+  "id": "frost",
+  "name": "Иней",
+  "settings": {
+    "skin": "frost",
+    "layout": "classic",
+    "playlist": "sheet",
+    "coverShape": "rounded",
+    "spin": 0,
+    "accent": "#2f5bff",
+    "accent2": "#8a4dff",
+    "accentFromCover": false,
+    "text": "#15161a",
+    "textScale": 1,
+    "titleWeight": 650,
+    "mqSpeed": 32,
+    "backdrop": "acrylic",
+    "winColor": "#f6f7fc",
+    "winDensity": 0.62,
+    "tint": 0.3,
+    "blur": 36,
+    "noise": 0.04,
+    "grid": 0,
+    "radius": 12,
+    "shadow": "soft",
+    "ambient": 0.5,
+    "glow": 0,
+    "desk": "aurora",
+    "deskColor": "#2b2d42",
+    "motion": "snappy",
+    "speed": 0.7,
+    "stiffness": 700,
+    "damping": 46,
+    "coverFx": "blur",
+    "textFx": "fade",
+    "btnFx": "press",
+    "playFx": "rotate",
+    "vizStyle": "bars",
+    "vizColor": "cover",
+    "vizBars": 40,
+    "vizAttack": 20,
+    "vizFall": 1.8,
+    "vizGlow": 0
+  },
+  "material": {
+    "color": {
+      "winBorder": "#FFFFFF8C",
+      "text2": "#15161ABD",
+      "text3": "#15161A99",
+      "btn": "#00000000",
+      "btnHover": "#0000000F",
+      "btnPress": "#0000001C",
+      "play": {
+        "ref": "accent"
+      },
+      "onPlay": "#FFFFFFFF",
+      "playRing": "#FFFFFF00",
+      "track": "#0000001F",
+      "thumb": "#FFFFFFFF",
+      "panel": "#FAFAFDD1",
+      "panelBorder": "#00000014",
+      "rowHover": "#0000000D",
+      "rowActive": {
+        "ref": "accent",
+        "alpha": 0.14
+      },
+      "rowLine": "#00000000",
+      "scrim": "#FFFFFF59",
+      "closeHover": "#C42B1CFF",
+      "titleGlow": "#00000000"
+    },
+    "effect": {
+      "saturate": 1.8,
+      "coverAmbientBlur": 40,
+      "coverSheen": 0.6,
+      "thumbIdle": 1,
+      "thumbHover": 1.35,
+      "dot": 1
+    },
+    "radius": {
+      "btn": 10,
+      "play": 999,
+      "row": 8,
+      "track": 999,
+      "panel": 16,
+      "thumb": 999,
+      "dot": 999
+    },
+    "shadow": {
+      "cover": [
+        {
+          "x": 0,
+          "y": 18,
+          "blur": 36,
+          "spread": -12,
+          "color": "#1E285A59",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 8,
+          "blur": 20,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.4
+          },
+          "inset": false
+        }
+      ],
+      "playHover": [
+        {
+          "x": 0,
+          "y": 10,
+          "blur": 26,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.55
+          },
+          "inset": false
+        }
+      ],
+      "btnActive": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 1,
+          "blur": 4,
+          "spread": 0,
+          "color": "#0000004D",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 1,
+          "color": "#00000014",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "section": 16,
+      "controls": 12,
+      "row": 12
+    },
+    "font": {
+      "lsTitle": -0.3,
+      "fsArtist": 14,
+      "fwArtist": 500,
+      "lsArtist": 0,
+      "ttArtist": "none",
+      "fsAlbum": 12,
+      "fsTime": 12,
+      "fsRow": 14,
+      "fsRowSub": 12,
+      "fsCaps": 11,
+      "fsMiniTitle": 14,
+      "fsHeading": 15,
+      "ttHeading": "none",
+      "lsHeading": 0
+    },
+    "size": {
+      "titlebar": 40,
+      "icon": 22,
+      "iconStroke": 1.8,
+      "track": 4,
+      "trackHover": 6,
+      "thumbW": 14,
+      "thumbH": 14,
+      "row": 52,
+      "miniCover": 60,
+      "dotW": 4,
+      "dotH": 4
+    },
+    "duration": {
+      "fast": 150,
+      "base": 220,
+      "slow": 350,
+      "cover": 350,
+      "text": 260,
+      "bg": 350,
+      "resize": 320,
+      "press": 90,
+      "stagger": 22
+    },
+    "easing": {
+      "out": [
+        0.2,
+        0.9,
+        0.1,
+        1
+      ],
+      "in": [
+        0.4,
+        0,
+        1,
+        1
+      ]
+    },
+    "marquee": {
+      "pause": 1400,
+      "gap": 48
+    }
+  }
+}

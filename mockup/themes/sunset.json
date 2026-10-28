@@ -1,0 +1,214 @@
+{
+  "format": "playermoon-theme",
+  "version": 1,
+  "kind": "builtin",
+  "id": "sunset",
+  "name": "Закат",
+  "settings": {
+    "skin": "sunset",
+    "layout": "horizon",
+    "playlist": "push",
+    "coverShape": "rounded",
+    "spin": 0,
+    "accent": "#ffb35c",
+    "accent2": "#ff5f6d",
+    "accentFromCover": true,
+    "text": "#fff4ec",
+    "textScale": 1,
+    "titleWeight": 700,
+    "mqSpeed": 26,
+    "backdrop": "cover",
+    "winColor": "#1d1016",
+    "winDensity": 0.94,
+    "tint": 0.55,
+    "blur": 50,
+    "noise": 0.06,
+    "grid": 0,
+    "radius": 22,
+    "shadow": "deep",
+    "ambient": 0.7,
+    "glow": 0.2,
+    "desk": "dusk",
+    "deskColor": "#2b2d42",
+    "motion": "slow",
+    "speed": 1.6,
+    "stiffness": 160,
+    "damping": 22,
+    "coverFx": "flip",
+    "textFx": "blur",
+    "btnFx": "lift",
+    "playFx": "pulse",
+    "vizStyle": "wave",
+    "vizColor": "accent",
+    "vizBars": 40,
+    "vizAttack": 10,
+    "vizFall": 1,
+    "vizGlow": 6
+  },
+  "material": {
+    "color": {
+      "winBorder": "#FFC8A024",
+      "text2": "#FFECE0C2",
+      "text3": "#FFE2D299",
+      "btn": "#00000000",
+      "btnHover": "#FFC8A01F",
+      "btnPress": "#FFC8A033",
+      "play": {
+        "ref": "accent"
+      },
+      "onPlay": "#2A1218FF",
+      "playRing": "#FFFFFF00",
+      "track": "#FFFFFF29",
+      "thumb": "#FFF4ECFF",
+      "panel": "#1D10168C",
+      "panelBorder": "#FFC8A024",
+      "rowHover": "#FFC8A014",
+      "rowActive": {
+        "ref": "accent",
+        "alpha": 0.16
+      },
+      "rowLine": "#00000000",
+      "scrim": "#0A040680",
+      "closeHover": "#FF5F6DFF",
+      "titleGlow": "#00000000"
+    },
+    "effect": {
+      "saturate": 1.2,
+      "coverAmbientBlur": 44,
+      "coverSheen": 0.4,
+      "thumbIdle": 0,
+      "thumbHover": 1.3,
+      "dot": 1
+    },
+    "radius": {
+      "btn": 14,
+      "play": 22,
+      "row": 14,
+      "track": 999,
+      "panel": 22,
+      "thumb": 999,
+      "dot": 999
+    },
+    "shadow": {
+      "cover": [
+        {
+          "x": 0,
+          "y": 26,
+          "blur": 50,
+          "spread": -14,
+          "color": "#00000099",
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 10,
+          "blur": 30,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.45
+          },
+          "inset": false
+        }
+      ],
+      "playHover": [
+        {
+          "x": 0,
+          "y": 14,
+          "blur": 36,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.6
+          },
+          "inset": false
+        }
+      ],
+      "btnActive": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 0,
+          "color": "#00000000",
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 2,
+          "blur": 6,
+          "spread": 0,
+          "color": "#00000066",
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "section": 14,
+      "controls": 10,
+      "row": 12
+    },
+    "font": {
+      "lsTitle": -0.3,
+      "fsArtist": 14,
+      "fwArtist": 500,
+      "lsArtist": 0,
+      "ttArtist": "none",
+      "fsAlbum": 12,
+      "fsTime": 12,
+      "fsRow": 14,
+      "fsRowSub": 12,
+      "fsCaps": 11,
+      "fsMiniTitle": 14,
+      "fsHeading": 18,
+      "ttHeading": "none",
+      "lsHeading": -0.2
+    },
+    "size": {
+      "titlebar": 40,
+      "icon": 22,
+      "iconStroke": 2,
+      "track": 5,
+      "trackHover": 7,
+      "thumbW": 14,
+      "thumbH": 14,
+      "row": 54,
+      "miniCover": 60,
+      "dotW": 4,
+      "dotH": 4
+    },
+    "duration": {
+      "fast": 150,
+      "base": 220,
+      "slow": 350,
+      "cover": 350,
+      "text": 260,
+      "bg": 350,
+      "resize": 320,
+      "press": 90,
+      "stagger": 22
+    },
+    "easing": {
+      "out": [
+        0.33,
+        1,
+        0.68,
+        1
+      ],
+      "in": [
+        0.32,
+        0,
+        0.67,
+        0
+      ]
+    },
+    "marquee": {
+      "pause": 2000,
+      "gap": 56
+    }
+  }
+}

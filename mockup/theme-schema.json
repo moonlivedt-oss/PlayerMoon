@@ -1,0 +1,920 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playermoon-theme-v1",
+  "title": "Файл темы PlayerMoon, формат playermoon-theme, версия 1",
+  "description": "Встроенная тема (kind = builtin) содержит полный набор значений: settings со всеми ключами и material. Пользовательская тема (kind = user или без kind) содержит settings: settings.skin - базовая встроенная тема, остальные ключи - переопределения поверх неё. Приложение игнорирует неизвестные ключи и обрезает числа по диапазону, схема строже, чтобы ловить ошибки в собственных файлах.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/builtinTheme"
+    },
+    {
+      "$ref": "#/$defs/userTheme"
+    }
+  ],
+  "$defs": {
+    "hex8": {
+      "type": "string",
+      "pattern": "^#[0-9A-F]{8}$",
+      "description": "Цвет #RRGGBBAA"
+    },
+    "settingColor": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "description": "Цвет настройки #RRGGBB"
+    },
+    "colorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "enum": [
+            "accent",
+            "accent2",
+            "text",
+            "glow",
+            "windowSolid"
+          ],
+          "description": "glow = accent с прозрачностью effect.glow; windowSolid = цвет фона окна без прозрачности"
+        },
+        "alpha": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Множитель прозрачности (color-mix с transparent)"
+        }
+      }
+    },
+    "colorValue": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hex8"
+        },
+        {
+          "$ref": "#/$defs/colorRef"
+        }
+      ]
+    },
+    "shadowList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y",
+          "blur",
+          "spread",
+          "color",
+          "inset"
+        ],
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "blur": {
+            "type": "number",
+            "minimum": 0
+          },
+          "spread": {
+            "type": "number"
+          },
+          "color": {
+            "$ref": "#/$defs/colorValue"
+          },
+          "inset": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "cubicBezier": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "skin": {
+          "description": "Пресет",
+          "enum": [
+            "glass",
+            "frost",
+            "neon",
+            "sunset",
+            "minimal"
+          ]
+        },
+        "layout": {
+          "description": "Окно",
+          "enum": [
+            "classic",
+            "stage",
+            "editorial",
+            "horizon"
+          ]
+        },
+        "playlist": {
+          "description": "Плейлист",
+          "enum": [
+            "side",
+            "sheet",
+            "push"
+          ]
+        },
+        "coverShape": {
+          "description": "Обложка",
+          "enum": [
+            "square",
+            "rounded",
+            "circle",
+            "vinyl"
+          ]
+        },
+        "spin": {
+          "description": "Вращение пластинки",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "accent": {
+          "description": "Акцент",
+          "$ref": "#/$defs/settingColor"
+        },
+        "accent2": {
+          "description": "Второй акцент",
+          "$ref": "#/$defs/settingColor"
+        },
+        "accentFromCover": {
+          "description": "Акцент из обложки",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Текст",
+          "$ref": "#/$defs/settingColor"
+        },
+        "textScale": {
+          "description": "Размер текста",
+          "type": "number",
+          "minimum": 0.85,
+          "maximum": 1.25
+        },
+        "titleWeight": {
+          "description": "Жирность названия",
+          "type": "number",
+          "minimum": 300,
+          "maximum": 800
+        },
+        "mqSpeed": {
+          "description": "Скорость бегущей строки",
+          "type": "number",
+          "minimum": 10,
+          "maximum": 80
+        },
+        "backdrop": {
+          "description": "Материал",
+          "enum": [
+            "acrylic",
+            "solid",
+            "cover",
+            "coverblur"
+          ]
+        },
+        "winColor": {
+          "description": "Цвет фона",
+          "$ref": "#/$defs/settingColor"
+        },
+        "winDensity": {
+          "description": "Плотность",
+          "type": "number",
+          "minimum": 0.15,
+          "maximum": 1
+        },
+        "tint": {
+          "description": "Оттенок обложки",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blur": {
+          "description": "Размытие",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 80
+        },
+        "noise": {
+          "description": "Зерно",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.15
+        },
+        "grid": {
+          "description": "Сетка",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.2
+        },
+        "radius": {
+          "description": "Скругление углов",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 28
+        },
+        "shadow": {
+          "description": "Тень",
+          "enum": [
+            "none",
+            "soft",
+            "deep",
+            "glow"
+          ]
+        },
+        "ambient": {
+          "description": "Подсветка под обложкой",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "glow": {
+          "description": "Неоновое свечение",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "desk": {
+          "description": "Фон под окном",
+          "enum": [
+            "aurora",
+            "night",
+            "dusk",
+            "paper",
+            "custom"
+          ]
+        },
+        "deskColor": {
+          "description": "Свой цвет",
+          "$ref": "#/$defs/settingColor"
+        },
+        "motion": {
+          "description": "Движение",
+          "enum": [
+            "soft",
+            "bouncy",
+            "calm",
+            "snappy",
+            "slow",
+            "none"
+          ]
+        },
+        "speed": {
+          "description": "Длительность анимаций",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "stiffness": {
+          "description": "Жёсткость пружины",
+          "type": "number",
+          "minimum": 80,
+          "maximum": 900
+        },
+        "damping": {
+          "description": "Затухание пружины",
+          "type": "number",
+          "minimum": 4,
+          "maximum": 60
+        },
+        "coverFx": {
+          "description": "Обложка",
+          "enum": [
+            "fade",
+            "slide",
+            "zoom",
+            "rotate",
+            "flip",
+            "wipe",
+            "blur"
+          ]
+        },
+        "textFx": {
+          "description": "Текст",
+          "enum": [
+            "rise",
+            "slide",
+            "fade",
+            "blur",
+            "wipe"
+          ]
+        },
+        "btnFx": {
+          "description": "Реакция",
+          "enum": [
+            "spring",
+            "press",
+            "lift",
+            "glow",
+            "none"
+          ]
+        },
+        "playFx": {
+          "description": "Пуск и пауза",
+          "enum": [
+            "morph",
+            "rotate",
+            "pulse"
+          ]
+        },
+        "vizStyle": {
+          "description": "Вид",
+          "enum": [
+            "bars",
+            "mirror",
+            "lines",
+            "wave",
+            "dots",
+            "led",
+            "off"
+          ]
+        },
+        "vizColor": {
+          "description": "Цвет",
+          "enum": [
+            "accent",
+            "cover",
+            "mono"
+          ]
+        },
+        "vizBars": {
+          "description": "Полос",
+          "type": "number",
+          "minimum": 16,
+          "maximum": 96
+        },
+        "vizAttack": {
+          "description": "Отклик",
+          "type": "number",
+          "minimum": 4,
+          "maximum": 40
+        },
+        "vizFall": {
+          "description": "Спад",
+          "type": "number",
+          "minimum": 0.3,
+          "maximum": 4
+        },
+        "vizGlow": {
+          "description": "Свечение полос",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "effect",
+        "radius",
+        "shadow",
+        "spacing",
+        "font",
+        "size",
+        "duration",
+        "easing",
+        "marquee"
+      ],
+      "properties": {
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "winBorder",
+            "text2",
+            "text3",
+            "btn",
+            "btnHover",
+            "btnPress",
+            "play",
+            "onPlay",
+            "playRing",
+            "track",
+            "thumb",
+            "panel",
+            "panelBorder",
+            "rowHover",
+            "rowActive",
+            "rowLine",
+            "scrim",
+            "closeHover",
+            "titleGlow"
+          ],
+          "properties": {
+            "winBorder": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "text2": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "text3": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "btn": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "btnHover": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "btnPress": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "play": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "onPlay": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "playRing": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "track": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "thumb": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "panel": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "panelBorder": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "rowHover": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "rowActive": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "rowLine": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "scrim": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "closeHover": {
+              "$ref": "#/$defs/colorValue"
+            },
+            "titleGlow": {
+              "$ref": "#/$defs/colorValue"
+            }
+          }
+        },
+        "effect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "saturate",
+            "coverAmbientBlur",
+            "coverSheen",
+            "thumbIdle",
+            "thumbHover",
+            "dot"
+          ],
+          "properties": {
+            "saturate": {
+              "type": "number"
+            },
+            "coverAmbientBlur": {
+              "type": "number"
+            },
+            "coverSheen": {
+              "type": "number"
+            },
+            "thumbIdle": {
+              "type": "number"
+            },
+            "thumbHover": {
+              "type": "number"
+            },
+            "dot": {
+              "type": "number"
+            }
+          }
+        },
+        "radius": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "btn",
+            "play",
+            "row",
+            "track",
+            "panel",
+            "thumb",
+            "dot"
+          ],
+          "properties": {
+            "btn": {
+              "type": "number"
+            },
+            "play": {
+              "type": "number"
+            },
+            "row": {
+              "type": "number"
+            },
+            "track": {
+              "type": "number"
+            },
+            "panel": {
+              "type": "number"
+            },
+            "thumb": {
+              "type": "number"
+            },
+            "dot": {
+              "type": "number"
+            }
+          }
+        },
+        "shadow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cover",
+            "play",
+            "playHover",
+            "btnActive",
+            "thumb"
+          ],
+          "properties": {
+            "cover": {
+              "$ref": "#/$defs/shadowList"
+            },
+            "play": {
+              "$ref": "#/$defs/shadowList"
+            },
+            "playHover": {
+              "$ref": "#/$defs/shadowList"
+            },
+            "btnActive": {
+              "$ref": "#/$defs/shadowList"
+            },
+            "thumb": {
+              "$ref": "#/$defs/shadowList"
+            }
+          }
+        },
+        "spacing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "section",
+            "controls",
+            "row"
+          ],
+          "properties": {
+            "section": {
+              "type": "number"
+            },
+            "controls": {
+              "type": "number"
+            },
+            "row": {
+              "type": "number"
+            }
+          }
+        },
+        "font": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lsTitle",
+            "fsArtist",
+            "fwArtist",
+            "lsArtist",
+            "ttArtist",
+            "fsAlbum",
+            "fsTime",
+            "fsRow",
+            "fsRowSub",
+            "fsCaps",
+            "fsMiniTitle",
+            "fsHeading",
+            "ttHeading",
+            "lsHeading"
+          ],
+          "properties": {
+            "lsTitle": {
+              "type": "number"
+            },
+            "fsArtist": {
+              "type": "number"
+            },
+            "fwArtist": {
+              "type": "number"
+            },
+            "lsArtist": {
+              "type": "number"
+            },
+            "ttArtist": {
+              "type": "string"
+            },
+            "fsAlbum": {
+              "type": "number"
+            },
+            "fsTime": {
+              "type": "number"
+            },
+            "fsRow": {
+              "type": "number"
+            },
+            "fsRowSub": {
+              "type": "number"
+            },
+            "fsCaps": {
+              "type": "number"
+            },
+            "fsMiniTitle": {
+              "type": "number"
+            },
+            "fsHeading": {
+              "type": "number"
+            },
+            "ttHeading": {
+              "type": "string"
+            },
+            "lsHeading": {
+              "type": "number"
+            }
+          }
+        },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "titlebar",
+            "icon",
+            "iconStroke",
+            "track",
+            "trackHover",
+            "thumbW",
+            "thumbH",
+            "row",
+            "miniCover",
+            "dotW",
+            "dotH"
+          ],
+          "properties": {
+            "titlebar": {
+              "type": "number"
+            },
+            "icon": {
+              "type": "number"
+            },
+            "iconStroke": {
+              "type": "number"
+            },
+            "track": {
+              "type": "number"
+            },
+            "trackHover": {
+              "type": "number"
+            },
+            "thumbW": {
+              "type": "number"
+            },
+            "thumbH": {
+              "type": "number"
+            },
+            "row": {
+              "type": "number"
+            },
+            "miniCover": {
+              "type": "number"
+            },
+            "dotW": {
+              "type": "number"
+            },
+            "dotH": {
+              "type": "number"
+            }
+          }
+        },
+        "duration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fast",
+            "base",
+            "slow",
+            "cover",
+            "text",
+            "bg",
+            "resize",
+            "press",
+            "stagger"
+          ],
+          "properties": {
+            "fast": {
+              "type": "number"
+            },
+            "base": {
+              "type": "number"
+            },
+            "slow": {
+              "type": "number"
+            },
+            "cover": {
+              "type": "number"
+            },
+            "text": {
+              "type": "number"
+            },
+            "bg": {
+              "type": "number"
+            },
+            "resize": {
+              "type": "number"
+            },
+            "press": {
+              "type": "number"
+            },
+            "stagger": {
+              "type": "number"
+            }
+          }
+        },
+        "easing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "out",
+            "in"
+          ],
+          "properties": {
+            "out": {
+              "$ref": "#/$defs/cubicBezier"
+            },
+            "in": {
+              "$ref": "#/$defs/cubicBezier"
+            }
+          }
+        },
+        "marquee": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pause",
+            "gap"
+          ],
+          "properties": {
+            "pause": {
+              "type": "number"
+            },
+            "gap": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "builtinTheme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "version",
+        "kind",
+        "id",
+        "name",
+        "settings",
+        "material"
+      ],
+      "properties": {
+        "format": {
+          "const": "playermoon-theme"
+        },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "builtin"
+        },
+        "id": {
+          "enum": [
+            "glass",
+            "frost",
+            "neon",
+            "sunset",
+            "minimal"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "settings": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/settings"
+            },
+            {
+              "required": [
+                "skin",
+                "layout",
+                "playlist",
+                "coverShape",
+                "spin",
+                "accent",
+                "accent2",
+                "accentFromCover",
+                "text",
+                "textScale",
+                "titleWeight",
+                "mqSpeed",
+                "backdrop",
+                "winColor",
+                "winDensity",
+                "tint",
+                "blur",
+                "noise",
+                "grid",
+                "radius",
+                "shadow",
+                "ambient",
+                "glow",
+                "desk",
+                "deskColor",
+                "motion",
+                "speed",
+                "stiffness",
+                "damping",
+                "coverFx",
+                "textFx",
+                "btnFx",
+                "playFx",
+                "vizStyle",
+                "vizColor",
+                "vizBars",
+                "vizAttack",
+                "vizFall",
+                "vizGlow"
+              ]
+            }
+          ]
+        },
+        "material": {
+          "$ref": "#/$defs/material"
+        }
+      }
+    },
+    "userTheme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "version",
+        "name",
+        "settings"
+      ],
+      "properties": {
+        "format": {
+          "const": "playermoon-theme"
+        },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "user"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "settings": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/settings"
+            },
+            {
+              "required": [
+                "skin"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,272 @@
+{
+  "format": "playermoon-theme",
+  "version": 1,
+  "kind": "builtin",
+  "id": "neon",
+  "name": "Неон",
+  "settings": {
+    "skin": "neon",
+    "layout": "stage",
+    "playlist": "sheet",
+    "coverShape": "vinyl",
+    "spin": 10,
+    "accent": "#2ef2ff",
+    "accent2": "#ff3dbb",
+    "accentFromCover": false,
+    "text": "#f5f2ff",
+    "textScale": 1,
+    "titleWeight": 700,
+    "mqSpeed": 36,
+    "backdrop": "solid",
+    "winColor": "#08070f",
+    "winDensity": 1,
+    "tint": 0.26,
+    "blur": 0,
+    "noise": 0,
+    "grid": 0.06,
+    "radius": 10,
+    "shadow": "glow",
+    "ambient": 0.85,
+    "glow": 0.6,
+    "desk": "night",
+    "deskColor": "#2b2d42",
+    "motion": "bouncy",
+    "speed": 1,
+    "stiffness": 300,
+    "damping": 14,
+    "coverFx": "rotate",
+    "textFx": "slide",
+    "btnFx": "glow",
+    "playFx": "pulse",
+    "vizStyle": "bars",
+    "vizColor": "accent",
+    "vizBars": 64,
+    "vizAttack": 22,
+    "vizFall": 1.2,
+    "vizGlow": 12
+  },
+  "material": {
+    "color": {
+      "winBorder": "#8C78FF38",
+      "text2": "#E2DCFFC2",
+      "text3": "#CEC6FF94",
+      "btn": "#00000000",
+      "btnHover": {
+        "ref": "accent",
+        "alpha": 0.1
+      },
+      "btnPress": {
+        "ref": "accent",
+        "alpha": 0.2
+      },
+      "play": {
+        "ref": "accent",
+        "alpha": 0.1
+      },
+      "onPlay": {
+        "ref": "accent"
+      },
+      "playRing": {
+        "ref": "accent"
+      },
+      "track": "#FFFFFF1A",
+      "thumb": "#FFFFFFFF",
+      "panel": "#0D0B1AF7",
+      "panelBorder": {
+        "ref": "accent",
+        "alpha": 0.35
+      },
+      "rowHover": {
+        "ref": "accent",
+        "alpha": 0.07
+      },
+      "rowActive": {
+        "ref": "accent2",
+        "alpha": 0.13
+      },
+      "rowLine": "#00000000",
+      "scrim": "#04030A99",
+      "closeHover": "#FF3DBBFF",
+      "titleGlow": {
+        "ref": "accent2",
+        "alpha": 0.35
+      }
+    },
+    "effect": {
+      "saturate": 1,
+      "coverAmbientBlur": 48,
+      "coverSheen": 0,
+      "thumbIdle": 1,
+      "thumbHover": 1.5,
+      "dot": 0
+    },
+    "radius": {
+      "btn": 12,
+      "play": 999,
+      "row": 8,
+      "track": 2,
+      "panel": 18,
+      "thumb": 999,
+      "dot": 999
+    },
+    "shadow": {
+      "cover": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 2,
+          "color": "#05040AE6",
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 0,
+          "spread": 3,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.45
+          },
+          "inset": false
+        }
+      ],
+      "play": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 18,
+          "spread": 0,
+          "color": {
+            "ref": "glow"
+          },
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 12,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.35
+          },
+          "inset": true
+        }
+      ],
+      "playHover": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 28,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.8
+          },
+          "inset": false
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 16,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.5
+          },
+          "inset": true
+        }
+      ],
+      "btnActive": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 14,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.5
+          },
+          "inset": false
+        }
+      ],
+      "thumb": [
+        {
+          "x": 0,
+          "y": 0,
+          "blur": 10,
+          "spread": 0,
+          "color": {
+            "ref": "accent",
+            "alpha": 0.9
+          },
+          "inset": false
+        }
+      ]
+    },
+    "spacing": {
+      "section": 14,
+      "controls": 10,
+      "row": 12
+    },
+    "font": {
+      "lsTitle": 0.2,
+      "fsArtist": 11,
+      "fwArtist": 600,
+      "lsArtist": 2.2,
+      "ttArtist": "uppercase",
+      "fsAlbum": 12,
+      "fsTime": 12,
+      "fsRow": 14,
+      "fsRowSub": 11,
+      "fsCaps": 11,
+      "fsMiniTitle": 14,
+      "fsHeading": 13,
+      "ttHeading": "uppercase",
+      "lsHeading": 2.4
+    },
+    "size": {
+      "titlebar": 40,
+      "icon": 22,
+      "iconStroke": 2,
+      "track": 3,
+      "trackHover": 5,
+      "thumbW": 12,
+      "thumbH": 12,
+      "row": 52,
+      "miniCover": 60,
+      "dotW": 4,
+      "dotH": 4
+    },
+    "duration": {
+      "fast": 150,
+      "base": 240,
+      "slow": 350,
+      "cover": 350,
+      "text": 240,
+      "bg": 350,
+      "resize": 340,
+      "press": 90,
+      "stagger": 20
+    },
+    "easing": {
+      "out": [
+        0.16,
+        1,
+        0.3,
+        1
+      ],
+      "in": [
+        0.5,
+        0,
+        0.75,
+        0
+      ]
+    },
+    "marquee": {
+      "pause": 1400,
+      "gap": 56
+    }
+  }
+}
