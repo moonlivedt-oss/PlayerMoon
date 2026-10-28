@@ -56,6 +56,10 @@ public:
     // Стили текста, общие с измерением ширины для бегущей строки
     static TextSpec TitleSpec(const view::PlayerView& v);
     static TextSpec MiniTitleSpec(const view::PlayerView& v);
+    static TextSpec TabSpec(const view::PlayerView& v);  // по текущему размеру вкладок
+    static TextSpec TabSpecFor(const view::PlayerView& v, bool small);
+    static TextSpec PillSpec();
+    static TextSpec TooltipSpec();
 
 private:
     using Rgba = motion::Rgba;
@@ -88,6 +92,14 @@ private:
     void DrawPlaylist(const view::PlayerView& v, const PaintInput& in);
     void DrawQueueRows(const view::PlayerView& v, const PaintInput& in);
     void DrawPluginRows(const view::PlayerView& v, const PaintInput& in);
+    void DrawPageRows(const view::PlayerView& v);
+    void DrawPill(const view::PlayerView& v, const view::Rect& r, const std::wstring& label, bool primary, bool hovered);
+    void DrawEmptyState(const view::PlayerView& v, const std::wstring& text, float top);
+    void DrawTextGlow(const std::wstring& text, const TextSpec& spec, const view::Rect& r, const Rgba& color, float sigma,
+                      const view::LineAnim& anim, double now);
+    void DrawScrollbar(const view::PlayerView& v);
+    void DrawToast(const view::PlayerView& v, const PaintInput& in);
+    void DrawTooltip(const view::PlayerView& v, const PaintInput& in);
     void DrawMini(const view::PlayerView& v);
 
     // Иконка: квадрат size с центром c. alphaOf - прозрачность и масштаб анимируемых слоёв
@@ -135,6 +147,7 @@ private:
         ComPtr<ID2D1Effect> blur;
         std::vector<uint32_t> key;
     } ambient_;
+    ComPtr<ID2D1Effect> vizGlowFx_, textGlowFx_;  // свечение полос визуализатора и названия
     std::vector<D2D1_MATRIX_3X2_F> transforms_;
     std::vector<bool> layers_;  // true - слой, false - пропущен (прозрачность 1)
 

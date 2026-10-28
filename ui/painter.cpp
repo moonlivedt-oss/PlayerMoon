@@ -8,6 +8,7 @@
 #include <random>
 
 #include "core/text.h"
+#include "plugins/sdk/playermoon_plugin.h"
 
 namespace ui {
 
@@ -78,6 +79,8 @@ void Painter::EnsureResources(ID2D1DeviceContext* dc) {
     noiseBrush_.Reset();
     shadows_.clear();
     ambient_ = {};
+    vizGlowFx_.Reset();
+    textGlowFx_.Reset();
 
     dc->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, 1), &brush_);
     if (!roundStroke_) {
@@ -358,6 +361,9 @@ void Painter::Paint(ID2D1DeviceContext* dc, const view::PlayerView& v, const Pai
         DrawMini(v);
         PopOpacity();
     }
+    // Поверх всего: уведомление и подсказка
+    DrawToast(v, in);
+    DrawTooltip(v, in);
 
     PopOpacity();
     PopTransform();
@@ -665,8 +671,11 @@ void Painter::DrawLine(const std::wstring& text, const TextSpec& spec, const Rec
 void Painter::DrawMeta(const view::PlayerView& v) {
     const theme::Material& m = v.theme.material;
     const float ts = v.layoutInput.textScale;
-    DrawLine(::text::Utf8ToWide(v.title.shown), TitleSpec(v), v.frame[Elem::Title], text_c_, v.title, &v.titleMarquee,
-             v.now);
+    const std::wstring titleText = ::text::Utf8ToWide(v.title.shown);
+    // Свечение названия (text-shadow 0 0 18px в макете) - тень того же текста цветом titleGlow
+    const Rgba glow = Color(m.color.titleGlow);
+    if (glow.a > 0.01f && !v.titleMarquee.Active()) DrawTextGlow(titleText, TitleSpec(v), v.frame[Elem::Title], glow, 9, v.title, v.now);
+    DrawLine(titleText, TitleSpec(v), v.frame[Elem::Title], text_c_, v.title, &v.titleMarquee, v.now);
 
     TextSpec artist;
     artist.size = m.font.fsArtist * ts;
@@ -703,15 +712,45 @@ void Painter::DrawVisualizer(const view::PlayerView& v) {
     const float gap = std::max(1.f, W / n * 0.28f);
     const float bw = (W - gap * (n - 1)) / n;
     const float rad = std::min(bw / 2, 3.f);
-    for (int i = 0; i < n; ++i) {
-        const float val = vals[static_cast<size_t>(i)];
-        const float t = n > 1 ? static_cast<float>(i) / (n - 1) : 0;
-        const float x = r.x + i * (bw + gap);
-        const float h = std::max(1.5f, val * (H / 2 - 1));
-        const float cy = r.y + H / 2;
-        dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, cy - h, x + bw, cy + h), rad, rad),
-                                  Brush(motion::Mix(a, b, t), 0.4f + val * 0.6f));
+    float peak = 0;
+    for (float val : vals) peak = std::max(peak, val);
+    auto bars = [&] {
+        for (int i = 0; i < n; ++i) {
+            const float val = vals[static_cast<size_t>(i)];
+            const float t = n > 1 ? static_cast<float>(i) / (n - 1) : 0;
+            const float x = r.x + i * (bw + gap);
+            const float h = std::max(1.5f, val * (H / 2 - 1));
+            const float cy = r.y + H / 2;
+            dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, cy - h, x + bw, cy + h), rad, rad),
+                                      Brush(motion::Mix(a, b, t), 0.4f + val * 0.6f));
+        }
+    };
+    // Свечение полос (shadowBlur = vizGlow в макете): полосы записываются в command list,
+    // эффект Shadow размывает их цветом акцента. Только пока полосы не лежат.
+    const float glow = v.motion.reduce ? 0.f : static_cast<float>(s.vizGlow);
+    if (glow > 0.5f && peak > 0.02f && aux_) {
+        ComPtr<ID2D1CommandList> list;
+        if (SUCCEEDED(aux_->CreateCommandList(&list))) {
+            ID2D1DeviceContext* main = dc_;
+            aux_->SetTarget(list.Get());
+            aux_->BeginDraw();
+            aux_->SetTransform(D2D1::IdentityMatrix());
+            dc_ = aux_.Get();
+            bars();
+            dc_ = main;
+            const HRESULT hr = aux_->EndDraw();
+            aux_->SetTarget(nullptr);
+            if (!vizGlowFx_) dc_->CreateEffect(CLSID_D2D1Shadow, &vizGlowFx_);
+            if (SUCCEEDED(hr) && SUCCEEDED(list->Close()) && vizGlowFx_) {
+                vizGlowFx_->SetInput(0, list.Get());
+                vizGlowFx_->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, glow / 2);
+                const D2D1_VECTOR_4F c{a.r, a.g, a.b, 0.9f};
+                vizGlowFx_->SetValue(D2D1_SHADOW_PROP_COLOR, c);
+                dc_->DrawImage(vizGlowFx_.Get());
+            }
+        }
     }
+    bars();
 }
 
 // ---------------- ползунки ----------------
@@ -893,7 +932,6 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
     const float alpha = std::clamp(v.panelAlpha.Value(now), 0.f, 1.f);
     if (alpha <= 0.003f) return;
     const theme::Material& m = v.theme.material;
-    const float ts = v.layoutInput.textScale;
     const Rect& panel = v.frame[Elem::Panel];
     PushOpacity(alpha);
     PushTransform(D2D1::Matrix3x2F::Translation(v.panelShift.Value(now), 0));
@@ -901,41 +939,54 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
     dc_->FillRectangle(ToD2D(panel), Brush(Color(m.color.panel)));
     dc_->FillRectangle(D2D1::RectF(panel.x, panel.y, panel.x + 1, panel.Bottom()), Brush(Color(m.color.panelBorder)));
 
-    TextSpec heading;
-    heading.size = m.font.fsHeading * ts;
-    heading.weight = 600;
-    heading.display = true;
-    heading.upper = m.font.headingUpper;
-    heading.spacing = m.font.lsHeading;
-    heading.ellipsis = false;
-    // Вкладки: активная - цветом текста с полоской акцента, другая - приглушённая (ярче при наведении)
-    struct TabDef {
-        Elem e;
-        const wchar_t* text;
-        int tab;
-    };
-    for (const TabDef& t : {TabDef{Elem::PanelTitle, L"Очередь", 0}, TabDef{Elem::PanelTab2, L"Плагины", 1}}) {
-        const Rect& r = v.frame[t.e];
-        const bool active = v.panelTab == t.tab;
-        const float h = std::clamp(v.Button(t.e).hoverAmt.Value(now), 0.f, 1.f);
+    // Вкладки: активная - цветом текста, остальные приглушены (ярче при наведении);
+    // полоска акцента под активной переезжает с пружиной
+    const TextSpec heading = TabSpec(v);
+    const int tabs = static_cast<int>(v.tabRects.size());
+    float tabsRight = 0;
+    for (int i = 0; i < tabs; ++i) {
+        const Rect& r = v.tabRects[static_cast<size_t>(i)];
+        const bool active = v.panelTab == i;
+        const float h = i < static_cast<int>(v.tabHover.size()) ? std::clamp(v.tabHover[static_cast<size_t>(i)].Value(now), 0.f, 1.f) : 0.f;
         const Rgba color = active ? text_c_ : motion::Mix(Text3(), text_c_, h * 0.6f);
-        auto l = text_->Layout(t.text, heading, 0, r.h);
-        if (!l) continue;
-        dc_->DrawTextLayout({r.x, r.y}, l.Get(), Brush(color));
-        if (active) {
-            DWRITE_TEXT_METRICS tm{};
-            l->GetMetrics(&tm);
-            const float y = r.Bottom() + 3;
-            dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(r.x, y, r.x + tm.width, y + 2), 1, 1), Brush(accent_));
-        }
+        const std::wstring name = i == 0 ? L"Очередь" : i == tabs - 1 ? L"Плагины"
+                                                                       : ::text::Utf8ToWide(v.pages[static_cast<size_t>(i - 1)].title);
+        TextSpec spec = heading;
+        spec.ellipsis = true;
+        if (auto l = text_->Layout(name, spec, r.w + 1, r.h)) dc_->DrawTextLayout({r.x, r.y}, l.Get(), Brush(color));
+        tabsRight = r.Right();
     }
+    if (tabs > 0) {
+        const float lx = v.tabLineX.Value(now), lw = std::max(0.f, v.tabLineW.Value(now));
+        const float y = v.tabRects[0].Bottom() + 4;
+        dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(lx, y, lx + lw, y + 2), 1, 1), Brush(accent_));
+    }
+    // Справа - сводка вкладки, если помещается рядом со вкладками
     TextSpec caps;
     caps.size = m.font.fsCaps;
     caps.tabular = true;
     caps.align = DWRITE_TEXT_ALIGNMENT_TRAILING;
+    caps.ellipsis = false;
     const Rect& hc = v.frame[Elem::PanelCount];
-    const std::wstring& countText = v.panelTab == 0 ? in.countText : in.pluginCountText;
-    if (auto l = text_->Layout(countText, caps, hc.w, hc.h)) dc_->DrawTextLayout({hc.x, hc.y}, l.Get(), Brush(Text3()));
+    std::wstring countText;
+    Rgba countColor = Text3();
+    if (v.CurrentKind() == view::PlayerView::TabKind::Queue) {
+        if (v.busy) {
+            // Поиск музыки: подпись мягко пульсирует (только пока идёт поиск)
+            countText = ::text::Utf8ToWide(v.busyText);
+            const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(now) * 4.f);
+            countColor = motion::Mix(Text3(), accent_, pulse);
+        } else {
+            countText = in.countText;
+        }
+    } else if (v.CurrentKind() == view::PlayerView::TabKind::Plugins) {
+        countText = in.pluginCountText;
+    }
+    if (!countText.empty()) {
+        const float w = text_->Measure(countText, caps);
+        if (hc.Right() - w > tabsRight + 10)
+            if (auto l = text_->Layout(countText, caps, hc.w, hc.h)) dc_->DrawTextLayout({hc.x, hc.y}, l.Get(), Brush(countColor));
+    }
 
     const Rect& list = v.frame[Elem::List];
     dc_->PushAxisAlignedClip(ToD2D(list), D2D1_ANTIALIAS_MODE_ALIASED);
@@ -943,10 +994,14 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
     const float tabA = std::clamp(v.tabAnim.Value(now), 0.f, 1.f);
     PushOpacity(tabA);
     PushTransform(D2D1::Matrix3x2F::Translation(0, (1 - tabA) * 8));
-    if (v.panelTab == 1) DrawPluginRows(v, in);
-    else DrawQueueRows(v, in);
+    switch (v.CurrentKind()) {
+        case view::PlayerView::TabKind::Plugins: DrawPluginRows(v, in); break;
+        case view::PlayerView::TabKind::Page: DrawPageRows(v); break;
+        default: DrawQueueRows(v, in); break;
+    }
     PopTransform();
     PopOpacity();
+    DrawScrollbar(v);
     dc_->PopAxisAlignedClip();
     PopTransform();
     PopOpacity();
@@ -958,12 +1013,13 @@ void Painter::DrawQueueRows(const view::PlayerView& v, const PaintInput& in) {
     const float ts = v.layoutInput.textScale;
     const Rect& list = v.frame[Elem::List];
     const int count = std::min(v.listCount, in.rows ? static_cast<int>(in.rows->size()) : 0);
-    if (count == 0 && !in.emptyHint.empty()) {
-        TextSpec hint;
-        hint.size = 13;
-        hint.align = DWRITE_TEXT_ALIGNMENT_CENTER;
-        if (auto l = text_->Layout(in.emptyHint, hint, list.w - 24, 40))
-            dc_->DrawTextLayout({list.x + 12, list.y + 24}, l.Get(), Brush(Text3()));
+    if (count == 0) {
+        // Пустой плейлист: луна, подсказка и две кнопки
+        DrawEmptyState(v, in.emptyHint, list.y + 36);
+        for (int i = 0; i < 2; ++i)
+            DrawPill(v, v.EmptyActionRect(i), i == 0 ? L"Открыть папку" : L"Открыть файлы", i == 0,
+                     v.hoverPillRow == -3 && v.hoverPillIdx == i);
+        return;
     }
     const float rowH = v.frame.rowHeight;
     const int first = std::max(0, static_cast<int>(v.listScroll / rowH));
@@ -994,7 +1050,10 @@ void Painter::DrawQueueRows(const view::PlayerView& v, const PaintInput& in) {
         const bool current = i == v.snap.index;
         const Rect r = v.frame.Row(i, v.listScroll);
         PushOpacity(ra);
-        PushTransform(D2D1::Matrix3x2F::Translation(shift, 0));
+        // Нажатая строка чуть уменьшается (row:active scale .985 в макете)
+        const float press = v.pressedRow == i ? std::clamp(v.rowPress.Value(now), 0.f, 1.f) : 0.f;
+        PushTransform(D2D1::Matrix3x2F::Translation(shift, 0) *
+                      ScaleAround(1 - 0.015f * press, {r.CenterX(), r.CenterY()}));
         const D2D1_RECT_F rr = ToD2D(r);
         const float rad = Radius(m.radius.row, r.w, r.h);
         const Rgba bg = current ? Color(m.color.rowActive) : WithAlpha(Color(m.color.rowHover), hov);
@@ -1020,10 +1079,28 @@ void Painter::DrawQueueRows(const view::PlayerView& v, const PaintInput& in) {
                         D2D1::RoundedRect(D2D1::RectF(x0, by + 14 - bh, x0 + 10.f / 3, by + 14), 1, 1), g.Get());
             }
         } else {
+            // Номер; при наведении он уступает место треугольнику «играть»
             wchar_t n[16];
             swprintf(n, 16, L"%d", i + 1);
-            if (auto l = text_->Layout(n, num, v.frame.rowNumW, 16))
-                dc_->DrawTextLayout({numX, cy - 8}, l.Get(), Brush(Text3()));
+            if (hov < 0.999f)
+                if (auto l = text_->Layout(n, num, v.frame.rowNumW, 16))
+                    dc_->DrawTextLayout({numX, cy - 8}, l.Get(), Brush(Text3(), 1 - hov));
+            if (hov > 0.001f) {
+                const float px = numX + v.frame.rowNumW / 2;
+                const D2D1_POINT_2F tri[3] = {{px - 4, cy - 6}, {px + 6, cy}, {px - 4, cy + 6}};
+                ComPtr<ID2D1PathGeometry> geo;
+                ComPtr<ID2D1GeometrySink> sink;
+                if (SUCCEEDED(renderer_->Factory()->CreatePathGeometry(&geo)) && SUCCEEDED(geo->Open(&sink))) {
+                    sink->BeginFigure(tri[0], D2D1_FIGURE_BEGIN_FILLED);
+                    sink->AddLines(tri + 1, 2);
+                    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                    sink->Close();
+                    PushTransform(ScaleAround(0.6f + 0.4f * hov, {px, cy}));
+                    dc_->FillGeometry(geo.Get(), Brush(text_c_, hov));
+                    dc_->DrawGeometry(geo.Get(), Brush(text_c_, hov), 1.2f, roundStroke_.Get());
+                    PopTransform();
+                }
+            }
         }
         // Название и исполнитель
         const float textX = r.x + v.frame.rowTextX;
@@ -1129,6 +1206,272 @@ void Painter::DrawMini(const view::PlayerView& v) {
     DrawPlayButton(v, Elem::MiniPlay);
     DrawButton(v, Elem::MiniExpand, IconId::Expand, m.size.icon, nullptr);
     DrawSlider(v, v.miniSeek, v.frame[Elem::MiniSeek], v.SeekDisplay(), true);
+}
+
+// ---------------- общие элементы: «пилюли», пустые состояния, свечение текста ----------------
+
+TextSpec Painter::TabSpec(const view::PlayerView& v) {
+    TextSpec t;
+    t.size = v.tabTextSize;
+    t.weight = 600;
+    t.display = true;
+    t.upper = v.theme.material.font.headingUpper;
+    t.spacing = v.theme.material.font.lsHeading;
+    t.ellipsis = false;
+    return t;
+}
+
+TextSpec Painter::TabSpecFor(const view::PlayerView& v, bool small) {
+    TextSpec t = TabSpec(v);
+    t.size = v.theme.material.font.fsHeading * v.layoutInput.textScale * (small ? 0.87f : 1.f);
+    return t;
+}
+
+TextSpec Painter::PillSpec() {
+    TextSpec t;
+    t.size = 12;
+    t.weight = 600;
+    t.align = DWRITE_TEXT_ALIGNMENT_CENTER;
+    return t;
+}
+
+TextSpec Painter::TooltipSpec() {
+    TextSpec t;
+    t.size = 12;
+    t.weight = 500;
+    t.ellipsis = false;
+    return t;
+}
+
+void Painter::DrawPill(const view::PlayerView& v, const Rect& r, const std::wstring& label, bool primary, bool hovered) {
+    // Кнопка-«пилюля»: скругление как у кнопок темы; главная - цветом акцента
+    const theme::Material& m = v.theme.material;
+    const float h = hovered ? std::clamp(v.pillHover.Value(v.now), 0.f, 1.f) : 0.f;
+    const float rad = Radius(m.radius.btn, r.w, r.h);
+    const D2D1_RECT_F rr = ToD2D(r);
+    Rgba bg, fg;
+    if (primary) {
+        bg = Color(m.color.play);
+        bg = motion::Mix(bg, Rgba{1, 1, 1, bg.a}, 0.12f * h);
+        fg = Color(m.color.onPlay);
+    } else {
+        bg = motion::Mix(Color(m.color.btnHover), WithAlpha(accent_, 0.3f), h);
+        if (bg.a < 0.08f) bg.a = 0.08f + 0.1f * h;  // у тем с прозрачными кнопками - лёгкая подложка
+        fg = motion::Mix(Text2(), text_c_, h);
+    }
+    dc_->FillRoundedRectangle(D2D1::RoundedRect(rr, rad, rad), Brush(bg));
+    if (!primary)
+        dc_->DrawRoundedRectangle(D2D1::RoundedRect(Inflate(rr, -0.5f), rad, rad), Brush(Color(m.color.panelBorder)), 1);
+    TextSpec spec = PillSpec();
+    if (auto l = text_->Layout(label, spec, r.w - 12, r.h)) dc_->DrawTextLayout({r.x + 6, r.y}, l.Get(), Brush(fg));
+}
+
+void Painter::DrawEmptyState(const view::PlayerView& v, const std::wstring& text, float top) {
+    // Луна с мягким ореолом и подпись по центру списка
+    const Rect& list = v.frame[Elem::List];
+    const D2D1_POINT_2F c{list.CenterX(), top + 30};
+    if (auto halo = Radial(c, 46, 46, {{0.f, WithAlpha(accent_, 0.18f)}, {1.f, WithAlpha(accent_, 0)}}))
+        dc_->FillEllipse(D2D1::Ellipse(c, 46, 46), halo.Get());
+    DrawIcon(icons_->Get(IconId::Moon), c, 44, WithAlpha(accent_, 0.85f), 0);
+    TextSpec hint;
+    hint.size = 13;
+    hint.align = DWRITE_TEXT_ALIGNMENT_CENTER;
+    hint.ellipsis = false;
+    // Перенос по словам: подсказка может быть в две-три строки
+    if (auto l = text_->Layout(text, hint, list.w - 40, 60)) {
+        l->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+        dc_->DrawTextLayout({list.x + 20, top + 70}, l.Get(), Brush(Text3()));
+    }
+}
+
+void Painter::DrawTextGlow(const std::wstring& text, const TextSpec& spec, const Rect& r, const Rgba& color, float sigma,
+                           const view::LineAnim& anim, double now) {
+    const float alpha = std::clamp(anim.alpha.Value(now), 0.f, 1.f);
+    if (alpha <= 0.01f || text.empty() || !aux_) return;
+    auto l = text_->Layout(text, spec, r.w, r.h);
+    if (!l) return;
+    ComPtr<ID2D1CommandList> list;
+    if (FAILED(aux_->CreateCommandList(&list))) return;
+    aux_->SetTarget(list.Get());
+    aux_->BeginDraw();
+    aux_->SetTransform(D2D1::IdentityMatrix());
+    aux_->DrawTextLayout({r.x, r.y + anim.dy.Value(now)}, l.Get(), Brush(Rgba{1, 1, 1, 1}));
+    const HRESULT hr = aux_->EndDraw();
+    aux_->SetTarget(nullptr);
+    if (FAILED(hr) || FAILED(list->Close())) return;
+    if (!textGlowFx_) dc_->CreateEffect(CLSID_D2D1Shadow, &textGlowFx_);
+    if (!textGlowFx_) return;
+    textGlowFx_->SetInput(0, list.Get());
+    textGlowFx_->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, sigma);
+    const D2D1_VECTOR_4F c{color.r, color.g, color.b, color.a * alpha};
+    textGlowFx_->SetValue(D2D1_SHADOW_PROP_COLOR, c);
+    dc_->DrawImage(textGlowFx_.Get());
+}
+
+// ---------------- страницы плагинов ----------------
+
+void Painter::DrawPageRows(const view::PlayerView& v) {
+    const double now = v.now;
+    const theme::Material& m = v.theme.material;
+    const float ts = v.layoutInput.textScale;
+    const int pg = v.PageOf(v.panelTab);
+    if (pg < 0 || pg >= static_cast<int>(v.pages.size())) return;
+    const view::PanelPage& page = v.pages[static_cast<size_t>(pg)];
+    const Rect& list = v.frame[Elem::List];
+
+    // Шапка: кнопки, первая - главная (цветом акцента)
+    for (int i = 0; i < static_cast<int>(page.actions.size()); ++i)
+        DrawPill(v, v.PageActionRect(pg, i), ::text::Utf8ToWide(page.actions[static_cast<size_t>(i)].label), i == 0,
+                 v.hoverPillRow == -1 && v.hoverPillIdx == i);
+    const float bar = v.PageBarHeight(pg);
+    if (bar > 0)
+        dc_->FillRectangle(D2D1::RectF(list.x + 4, list.y + bar - 1, list.Right() - 4, list.y + bar),
+                           Brush(Color(m.color.panelBorder)));
+    if (page.rows.empty()) {
+        DrawEmptyState(v, ::text::Utf8ToWide(page.emptyText), list.y + bar + 30);
+        return;
+    }
+    // Строки - под шапкой, со своей обрезкой
+    dc_->PushAxisAlignedClip(D2D1::RectF(list.x, list.y + bar, list.Right(), list.Bottom()), D2D1_ANTIALIAS_MODE_ALIASED);
+    TextSpec title;
+    title.size = m.font.fsRow * ts;
+    title.weight = 600;
+    TextSpec sub;
+    sub.size = m.font.fsRowSub * ts;
+    TextSpec status = sub;
+    status.align = DWRITE_TEXT_ALIGNMENT_TRAILING;
+    status.tabular = true;
+    const float rowH = view::PlayerView::kPageRowHeight;
+    const int first = std::max(0, static_cast<int>(v.listScroll / rowH));
+    const int last = std::min(static_cast<int>(page.rows.size()) - 1,
+                              static_cast<int>((v.listScroll + list.h) / rowH) + 1);
+    for (int i = first; i <= last; ++i) {
+        const auto idx = static_cast<size_t>(i);
+        const view::PanelRow& row = page.rows[idx];
+        const Rect r = v.PageRowRect(pg, i);
+        const float hov = idx < v.rowHover.size() ? std::clamp(v.rowHover[idx].Value(now), 0.f, 1.f) : 0.f;
+        const D2D1_RECT_F rr = ToD2D(r.Inflate(-1));
+        const float rad = Radius(m.radius.row, r.w, r.h);
+        // Подложка: при наведении и у строк в работе
+        Rgba bg = WithAlpha(Color(m.color.rowHover), std::max(hov, row.state == PM_ROW_ACTIVE ? 0.6f : 0.f));
+        if (bg.a > 0.003f) dc_->FillRoundedRectangle(D2D1::RoundedRect(rr, rad, rad), Brush(bg));
+        // Метка состояния слева
+        const Rgba stateColor = row.state == PM_ROW_ERROR    ? Color(m.color.closeHover)
+                                : row.state == PM_ROW_ACTIVE ? accent_
+                                : row.state == PM_ROW_DONE   ? motion::Mix(accent_, text_c_, 0.35f)
+                                                             : Text3();
+        const float dotY = r.y + 18;
+        if (row.state == PM_ROW_ACTIVE) {
+            // Идёт работа: метка «дышит»
+            const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(now) * 5.f);
+            dc_->FillEllipse(D2D1::Ellipse({r.x + 14, dotY}, 6 + 2 * pulse, 6 + 2 * pulse),
+                             Brush(WithAlpha(stateColor, 0.18f * (1 - pulse))));
+        }
+        dc_->FillEllipse(D2D1::Ellipse({r.x + 14, dotY}, 3.5f, 3.5f), Brush(stateColor));
+
+        // Справа сверху - состояние; кнопки - справа снизу
+        const float textX = r.x + 26;
+        float pillsLeft = r.Right() - 10;
+        for (int k = 0; k < static_cast<int>(row.actions.size()); ++k) pillsLeft = std::min(pillsLeft, v.PageRowActionRect(pg, i, k).x);
+        // Колонка состояния - по ширине текста (не больше 140), остальное - названию
+        const std::wstring statusText = ::text::Utf8ToWide(row.status);
+        TextSpec measure = status;
+        measure.ellipsis = false;
+        const float statusW = row.status.empty() ? 0.f : std::min(140.f, text_->Measure(statusText, measure) + 2);
+        if (statusW > 0)
+            if (auto l = text_->Layout(statusText, status, statusW, 18))
+                dc_->DrawTextLayout({r.Right() - 12 - statusW, r.y + 9}, l.Get(),
+                                    Brush(row.state == PM_ROW_ERROR ? Color(m.color.closeHover) : Text3()));
+        if (auto l = text_->Layout(::text::Utf8ToWide(row.title), title, r.Right() - 12 - statusW - 10 - textX, 20))
+            dc_->DrawTextLayout({textX, r.y + 8}, l.Get(), Brush(text_c_));
+        if (auto l = text_->Layout(::text::Utf8ToWide(row.subtitle), sub, pillsLeft - 8 - textX, 18))
+            dc_->DrawTextLayout({textX, r.y + 36}, l.Get(), Brush(row.state == PM_ROW_ERROR ? Text2() : Text3()));
+        for (int k = 0; k < static_cast<int>(row.actions.size()); ++k)
+            DrawPill(v, v.PageRowActionRect(pg, i, k), ::text::Utf8ToWide(row.actions[static_cast<size_t>(k)].label),
+                     false, v.hoverPillRow == i && v.hoverPillIdx == k);
+        // Полоса прогресса по низу строки
+        if (row.progress >= 0) {
+            const float x0 = textX, x1 = r.Right() - 12, y = r.Bottom() - 5;
+            const float tr = 1.5f;
+            dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x0, y, x1, y + 3), tr, tr), Brush(Color(m.color.track)));
+            const float fx = x0 + (x1 - x0) * std::clamp(row.progress, 0.f, 1.f);
+            if (fx > x0 + 0.5f)
+                if (auto g = Linear({x0, 0}, {std::max(fx, x0 + 1), 0}, {{0.f, accent_}, {1.f, accent2_}}))
+                    dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x0, y, fx, y + 3), tr, tr), g.Get());
+        }
+    }
+    dc_->PopAxisAlignedClip();
+}
+
+// ---------------- полоса прокрутки, уведомление, подсказка ----------------
+
+void Painter::DrawScrollbar(const view::PlayerView& v) {
+    const float a = std::clamp(v.scrollbarAlpha.Value(v.now), 0.f, 1.f);
+    if (a <= 0.01f) return;
+    const float content = v.ContentHeight(), view = v.ListViewHeight();
+    if (content <= view + 0.5f || view <= 0) return;
+    const Rect& list = v.frame[Elem::List];
+    const float top = list.Bottom() - view;
+    const float h = std::max(24.f, view * view / content);
+    const float y = top + (view - h) * std::clamp(v.listScroll / (content - view), 0.f, 1.f);
+    const float x = list.Right() - 4;
+    dc_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y + 2, x + 3, y + h - 2), 1.5f, 1.5f),
+                              Brush(motion::Mix(Text3(), text_c_, 0.2f), 0.6f * a));
+}
+
+void Painter::DrawToast(const view::PlayerView& v, const PaintInput& in) {
+    const float a = std::clamp(v.toastAlpha.Value(v.now), 0.f, 1.f);
+    if (a <= 0.01f || v.toastText.empty()) return;
+    const theme::Material& m = v.theme.material;
+    TextSpec spec;
+    spec.size = 13;
+    spec.weight = 500;
+    spec.ellipsis = true;
+    const std::wstring text = ::text::Utf8ToWide(v.toastText);
+    const float maxW = std::min(380.f, (v.mini ? in.window.w : v.frame[Elem::Main].w) - 32);
+    const float w = std::min(maxW, text_->Measure(text, spec) + 36);
+    const float h = 34;
+    // На месте визуализатора (он декоративный, кнопки не закрываются); в мини-режиме - по центру
+    const float cx = v.mini ? in.window.w / 2 : v.frame[Elem::Main].CenterX();
+    const float y = v.mini ? (in.window.h - h) / 2 : v.frame[Elem::Viz].CenterY() - h / 2;
+    const float rise = (1 - a) * 8;
+    const D2D1_RECT_F r = D2D1::RectF(cx - w / 2, y + rise, cx + w / 2, y + rise + h);
+    PushOpacity(a);
+    DrawShadowLayer(r, h / 2, 0, 6, 18, 0, {0, 0, 0, 0.3f});
+    Rgba bg = ctx_.windowSolid;
+    bg.a = 0.95f;
+    dc_->FillRoundedRectangle(D2D1::RoundedRect(r, h / 2, h / 2), Brush(bg));
+    dc_->DrawRoundedRectangle(D2D1::RoundedRect(Inflate(r, -0.5f), h / 2, h / 2), Brush(WithAlpha(accent_, 0.45f)), 1);
+    // Точка акцента слева - «новое»
+    dc_->FillEllipse(D2D1::Ellipse({r.left + 16, (r.top + r.bottom) / 2}, 3.5f, 3.5f), Brush(accent_));
+    if (auto l = text_->Layout(text, spec, w - 36, h)) dc_->DrawTextLayout({r.left + 26, r.top}, l.Get(), Brush(text_c_));
+    (void)m;
+    PopOpacity();
+}
+
+void Painter::DrawTooltip(const view::PlayerView& v, const PaintInput& in) {
+    const float a = std::clamp(v.tooltipAlpha.Value(v.now), 0.f, 1.f);
+    if (a <= 0.01f || v.tooltipText.empty()) return;
+    const theme::Material& m = v.theme.material;
+    const TextSpec spec = TooltipSpec();
+    const std::wstring text = ::text::Utf8ToWide(v.tooltipText);
+    const float w = text_->Measure(text, spec) + 20, h = 26;
+    const view::Rect& an = v.tooltipAnchor;
+    // Над элементом; не помещается сверху - под ним; по горизонтали в пределах окна
+    float y = an.y - h - 8;
+    if (y < 4) y = an.Bottom() + 8;
+    const float x = std::clamp(an.CenterX() - w / 2, 4.f, std::max(4.f, in.window.w - w - 4));
+    const float rise = (1 - a) * 4;
+    const D2D1_RECT_F r = D2D1::RectF(x, y + rise, x + w, y + rise + h);
+    const float rad = std::min(7.f, std::max(3.f, m.radius.row * 0.6f));
+    PushOpacity(a);
+    DrawShadowLayer(r, rad, 0, 4, 12, 0, {0, 0, 0, 0.28f});
+    Rgba bg = ctx_.windowSolid;
+    bg.a = 0.96f;
+    dc_->FillRoundedRectangle(D2D1::RoundedRect(r, rad, rad), Brush(bg));
+    dc_->DrawRoundedRectangle(D2D1::RoundedRect(Inflate(r, -0.5f), rad, rad), Brush(Color(m.color.panelBorder)), 1);
+    if (auto l = text_->Layout(text, spec, 0, h)) dc_->DrawTextLayout({r.left + 10, r.top}, l.Get(), Brush(text_c_));
+    PopOpacity();
 }
 
 }  // namespace ui

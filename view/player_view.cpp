@@ -23,8 +23,6 @@ bool IsButton(Elem e) {
         case Elem::PlBtn:
         case Elem::MiniPlay:
         case Elem::MiniExpand:
-        case Elem::PanelTitle:
-        case Elem::PanelTab2:
         case Elem::TimeCur:
         case Elem::TimeDur: return true;
         default: return false;
@@ -57,6 +55,7 @@ void PlayerView::Rearrange() {
     layoutInput.theme = &theme;
     layout->Arrange(layoutInput, windowWithPanel_, frame);
     ArrangeMini(theme.material, layoutInput.textScale, frame);
+    LayoutTabs();
 }
 
 void PlayerView::Resize(bool withPanel) {
@@ -219,11 +218,7 @@ Elem PlayerView::HitElement(Point p) const {
     }
     for (Elem e : {Elem::TbSettings, Elem::TbMini, Elem::TbMinimize, Elem::TbClose})
         if (in(e)) return e;
-    if (playlistOpen && frame[Elem::Panel].Contains(p.x, p.y)) {
-        for (Elem e : {Elem::PanelTitle, Elem::PanelTab2})
-            if (in(e)) return e;
-        return Elem::Count;
-    }
+    if (playlistOpen && frame[Elem::Panel].Contains(p.x, p.y)) return Elem::Count;  // вкладки - TabAt
     for (Elem e : {Elem::Shuffle, Elem::Prev, Elem::Play, Elem::Next, Elem::Repeat, Elem::VolBtn, Elem::PlBtn,
                    Elem::Seek, Elem::Volume, Elem::TimeCur, Elem::TimeDur})
         if (in(e)) return e;
@@ -248,6 +243,12 @@ int PlayerView::RowAt(Point p) const {
     if (mini || !playlistOpen) return -1;
     const Rect& list = frame[Elem::List];
     if (!list.Contains(p.x, p.y)) return -1;
+    if (CurrentKind() == TabKind::Page) {
+        const float top = list.y + PageBarHeight(PageOf(panelTab));
+        if (p.y < top) return -1;
+        const int i = static_cast<int>(std::floor((p.y - top + listScroll) / kPageRowHeight));
+        return (i >= 0 && i < RowCount()) ? i : -1;
+    }
     const int i = static_cast<int>(std::floor((p.y - list.y + listScroll) / frame.rowHeight));
     return (i >= 0 && i < RowCount()) ? i : -1;
 }
@@ -276,6 +277,23 @@ void PlayerView::OnMouseMove(Point p, double nowTime) {
         return;
     }
     SetHovered(HitElement(p));
+    UpdateTooltip(p);
+    // Вкладки: подсветка при наведении
+    const int tab = TabAt(p);
+    for (size_t i = 0; i < tabHover.size(); ++i) {
+        const float target = static_cast<int>(i) == tab ? 1.f : 0.f;
+        if (tabHover[i].Target() != target) tabHover[i].To(target, motion.fast, motion.out, timeline);
+    }
+    int pillRow = -2, pillIdx = -1;
+    if (!PillAt(p, &pillRow, &pillIdx)) pillRow = -2, pillIdx = -1;
+    SetPillHover(pillRow, pillIdx);
+    // Над списком полоса прокрутки видна, после ухода - гаснет
+    const bool overList = playlistOpen && !mini && frame[Elem::List].Contains(p.x, p.y);
+    if (overList != overList_) {
+        overList_ = overList;
+        if (overList) ShowScrollbar(false);
+        else ShowScrollbar(true);
+    }
     const int row = RowAt(p);
     if (row != hoverRow) {
         if (hoverRow >= 0 && hoverRow < static_cast<int>(rowHover.size()))
@@ -288,6 +306,20 @@ void PlayerView::OnMouseMove(Point p, double nowTime) {
 
 void PlayerView::OnMouseDown(Point p, double nowTime) {
     timeline.SetNow(nowTime);
+    HideTooltip();
+    pressedTab_ = TabAt(p);
+    if (pressedTab_ >= 0) return;
+    int pillRow = -2, pillIdx = -1;
+    if (PillAt(p, &pillRow, &pillIdx)) {
+        pressedPillRow_ = pillRow;
+        pressedPillIdx_ = pillIdx;
+        return;
+    }
+    const int row = RowAt(p);
+    if (row >= 0) {
+        pressedRow = row;
+        rowPress.To(1, motion.press, motion.out, timeline);
+    }
     Elem e = Elem::Count;
     if (SliderState* s = SliderAt(p, &e)) {
         captureSlider_ = s;
@@ -334,13 +366,43 @@ void PlayerView::OnMouseUp(Point p, double nowTime) {
         if (HitElement(p) == e) Activate(e);
         return;
     }
+    if (pressedTab_ >= 0) {
+        const int tab = pressedTab_;
+        pressedTab_ = -1;
+        if (TabAt(p) == tab) SwitchTab(tab);
+        return;
+    }
+    if (pressedPillIdx_ >= 0) {
+        const int pr = pressedPillRow_, pi = pressedPillIdx_;
+        pressedPillRow_ = -2;
+        pressedPillIdx_ = -1;
+        int row = -2, idx = -1;
+        if (!host_ || !PillAt(p, &row, &idx) || row != pr || idx != pi) return;
+        if (row == -3) {
+            host_->OpenFiles(idx == 0);
+            return;
+        }
+        const int pg = PageOf(panelTab);
+        if (pg < 0 || pg >= static_cast<int>(pages.size())) return;
+        const PanelPage& page = pages[static_cast<size_t>(pg)];
+        if (row == -1) host_->PageAction(pg, 0, page.actions[static_cast<size_t>(idx)].id);
+        else
+            host_->PageAction(pg, page.rows[static_cast<size_t>(row)].id,
+                              page.rows[static_cast<size_t>(row)].actions[static_cast<size_t>(idx)].id);
+        return;
+    }
+    if (pressedRow >= 0) {
+        rowPress.To(0, motion.spring, motion.springCurve, timeline);
+        pressedRow = -1;
+    }
     const int row = RowAt(p);
     if (row < 0 || !host_) return;
-    if (panelTab == 1) {
+    if (CurrentKind() == TabKind::Plugins) {
         if (row < pluginCount) host_->TogglePlugin(row);
         else host_->OpenPluginsFolder();
         return;
     }
+    if (CurrentKind() == TabKind::Page) return;  // у страниц нажимаются только кнопки
     if (row == snap.index) host_->TogglePlay();
     else host_->PlayIndex(row);
 }
@@ -356,11 +418,20 @@ void PlayerView::OnMouseLeave(double nowTime) {
     if (hoverRow >= 0 && hoverRow < static_cast<int>(rowHover.size()))
         rowHover[static_cast<size_t>(hoverRow)].To(0, motion.fast, motion.out, timeline);
     hoverRow = -1;
+    HideTooltip();
+    tooltipElem_ = Elem::Count;
+    for (auto& t : tabHover)
+        if (t.Target() != 0) t.To(0, motion.fast, motion.out, timeline);
+    SetPillHover(-2, -1);
+    if (overList_) {
+        overList_ = false;
+        ShowScrollbar(true);
+    }
 }
 
 void PlayerView::OnRightClick(Point p) {
     if (!host_) return;
-    const int row = panelTab == 0 ? RowAt(p) : -1;
+    const int row = CurrentKind() == TabKind::Queue ? RowAt(p) : -1;
     if (row >= 0) host_->ShowRowMenu(row, p);
     else host_->ShowMenu(p);
 }
@@ -383,7 +454,8 @@ void PlayerView::OnWheel(Point p, float delta, double nowTime) {
         return;
     }
     if (!panel) return;
-    const float maxScroll = std::max(0.f, RowCount() * frame.rowHeight - frame[Elem::List].h);
+    const float maxScroll = std::max(0.f, ContentHeight() - ListViewHeight());
+    ShowScrollbar(true);
     // delta - доли «щелчка» колеса (120 единиц Windows = 1); щелчок = три строки
     const float target = std::clamp(scrollAnim.Target() - delta * frame.rowHeight * 3, 0.f, maxScroll);
     scrollAnim.To(target, motion.base, motion.out, timeline);
@@ -415,8 +487,6 @@ void PlayerView::Activate(Elem e) {
         case Elem::Repeat: host_->CycleRepeat(); break;
         case Elem::VolBtn: host_->ToggleMute(); break;
         case Elem::PlBtn: TogglePlaylist(timeline.Now()); break;
-        case Elem::PanelTitle: SwitchTab(0); break;
-        case Elem::PanelTab2: SwitchTab(1); break;
         case Elem::TimeCur:
         case Elem::TimeDur: showRemaining = !showRemaining; break;
         default: break;
@@ -462,8 +532,15 @@ void PlayerView::TogglePlaylist(double nowTime) {
 }
 
 void PlayerView::SwitchTab(int tab) {
-    if (tab == panelTab) return;
+    if (tab == panelTab || tab < 0 || tab >= TabCount()) return;
     panelTab = tab;
+    // Полоска под вкладкой переезжает к новой с пружиной
+    if (static_cast<size_t>(tab) < tabRects.size()) {
+        const Rect& r = tabRects[static_cast<size_t>(tab)];
+        tabLineX.To(r.x, motion.spring, motion.springCurve, timeline);
+        tabLineW.To(r.w, motion.spring, motion.springCurve, timeline);
+    }
+    scrollbarAlpha.Snap(0);
     // Новый список проявляется с коротким сдвигом снизу
     tabAnim.Snap(motion.reduce ? 1.f : 0.f);
     tabAnim.To(1, motion.base, motion.out, timeline);
@@ -478,8 +555,12 @@ void PlayerView::ShowPanelTab(int tab, double nowTime) {
     timeline.SetNow(nowTime);
     if (mini) ToggleMini(nowTime);
     if (!playlistOpen && !mini) {
-        panelTab = tab;
+        panelTab = std::clamp(tab, 0, TabCount() - 1);
         scrollAnim.Snap(0);
+        if (static_cast<size_t>(panelTab) < tabRects.size()) {
+            tabLineX.Snap(tabRects[static_cast<size_t>(panelTab)].x);
+            tabLineW.Snap(tabRects[static_cast<size_t>(panelTab)].w);
+        }
         TogglePlaylist(nowTime);
         return;
     }
@@ -496,7 +577,6 @@ void PlayerView::SetPlugins(const std::vector<bool>& enabled, double nowTime) {
         if (first) pluginOn[i].Snap(target);
         else if (pluginOn[i].Target() != target) pluginOn[i].To(target, motion.spring, motion.springCurve, timeline);
     }
-    // Ховер строк: состояния нужны и для строк плагинов
     if (static_cast<int>(rowHover.size()) < RowCount()) rowHover.resize(static_cast<size_t>(RowCount()));
 }
 
@@ -576,6 +656,20 @@ void PlayerView::Update(double nowTime, const PlaybackSnapshot& s, const std::ve
         for (auto& d : due) d.fn();
     }
 
+    // «Ленивые» отложенные действия (подсказки, уведомления, полоса прокрутки)
+    if (!lazy_.empty()) {
+        std::vector<Pending> due;
+        for (auto it = lazy_.begin(); it != lazy_.end();) {
+            if (it->at <= nowTime) {
+                due.push_back(std::move(*it));
+                it = lazy_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (auto& d : due) d.fn();
+    }
+
     // Подмена текста посередине анимации смены
     bool remeasure = false;
     for (LineAnim* line : {&title, &artist, &album, &miniTitle, &miniArtist}) {
@@ -629,7 +723,9 @@ void PlayerView::Update(double nowTime, const PlaybackSnapshot& s, const std::ve
     // Строки плейлиста: состояния по числу треков
     listCount = s.count;
     // Ховер нужен и строкам плагинов, лесенка - только очереди
-    rowHover.resize(static_cast<size_t>(std::max(listCount, pluginCount + 1)));
+    size_t pageRows = 0;
+    for (const auto& pg : pages) pageRows = std::max(pageRows, pg.rows.size());
+    rowHover.resize(std::max({static_cast<size_t>(listCount), static_cast<size_t>(pluginCount + 1), pageRows}));
     rowAlpha.resize(static_cast<size_t>(listCount), motion::Tween(1));
     rowShift.resize(static_cast<size_t>(listCount), motion::Tween(0));
     listScroll = scrollAnim.Value(nowTime);
@@ -660,8 +756,15 @@ void PlayerView::Update(double nowTime, const PlaybackSnapshot& s, const std::ve
     for (LineAnim* line : {&title, &artist, &album, &miniTitle, &miniArtist}) linesPending |= line->hasPending;
     // Во время игры в полном режиме прогресс и визуализатор обновляются каждый кадр
     const bool playingFull = s.playing && visible && !mini;
+    // Подпись подсказки следит за состоянием (нажали «пуск» - стало «Пауза»)
+    if (tooltipAlpha.Target() > 0 && tooltipElem_ != Elem::Count) {
+        const std::string t = TooltipFor(tooltipElem_, lastMouse_);
+        if (!t.empty()) tooltipText = t;
+    }
+    // Пульсирующая подпись «поиск музыки» видна только в шапке открытой очереди
+    const bool busyVisible = busy && playlistOpen && !mini && CurrentKind() == TabKind::Queue;
     needsFrames_ = timeline.Busy() || !pending_.empty() || linesPending || continuous || playingFull ||
-                   captureSlider_ != nullptr;
+                   captureSlider_ != nullptr || busyVisible;
     if (!visible) needsFrames_ = !pending_.empty();
     // В мини-режиме во время игры полоса прогресса двигается на 1-2 px в секунду - хватает раза в секунду
     wantsTicks_ = s.playing && visible && mini && !needsFrames_;

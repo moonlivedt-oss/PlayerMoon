@@ -20,7 +20,7 @@ plugins/
   "description": "Одна строка о том, что делает плагин",
   "author": "Имя",
   "library": "my-plugin",
-  "apiVersion": 1
+  "apiVersion": 2
 }
 ```
 
@@ -51,6 +51,27 @@ PM_PLUGIN_EXPORT int PlayerMoonPluginInit(const PmHost* host, PmPlugin* plugin) 
 команды (пуск, пауза, следующий, предыдущий), перемотку и пункты в подменю «Плагины».
 
 События (`PmPlugin`): смена трека, пуск/пауза, нажатие своего пункта меню, выгрузка.
+
+### Версия 2: своя вкладка в панели
+
+Плагин описывает данные - плеер рисует их в стиле темы (кнопки-«пилюли», строки, полосы прогресса,
+подсказки, анимации):
+
+```c
+host->pageCreate(host->ctx, 1, "Загрузки", "Текст, когда строк нет");
+PmAction head[] = {{1, "Вставить ссылку"}, {2, "Папка"}};   /* первая кнопка - главная */
+host->pageSetActions(host->ctx, 1, head, 2);
+
+PmAction acts[] = {{10, "Отмена"}};
+PmPageRow row = {100, "Название", "Подпись", "42%  2.1 МБ/с", 0.42f, PM_ROW_ACTIVE, acts, 1};
+host->pageSetRow(host->ctx, 1, &row);   /* та же id - обновление строки */
+```
+
+Нажатия приходят в `onPageAction(self, pageId, rowId, actionId)` (`rowId = 0` - кнопка шапки). Ещё в
+версии 2: `post` (единственный вызов, разрешённый из своих потоков: выполнить функцию в потоке окна),
+`toast`, `clipboardText`, `openPath`, `addFiles` (в плейлист), `addLibraryFolder`, `pickFolder`, `pageShow`.
+
+Полный пример - `plugins/downloader` (фоновые задания, отмена, прогресс).
 
 Правила:
 

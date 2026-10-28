@@ -52,6 +52,8 @@ public:
     void ShowRowMenu(int row, view::Point at) override;
     void TogglePlugin(int index) override;
     void OpenPluginsFolder() override;
+    void PageAction(int page, int rowId, int actionId) override;
+    void OpenFiles(bool folder) override;
     float MeasureText(view::TextStyle style, const std::string& text) override;
 
 private:
@@ -84,7 +86,6 @@ private:
     void OnTrackChanged(int index, int direction);
     void RebuildRows();
     void ShowContextMenu(POINT screen);
-    void OpenFiles(bool folder);
     void ImportTheme();
     void ExportTheme();
     void LoadDropped(HDROP drop);
@@ -109,6 +110,11 @@ private:
     std::filesystem::path UserPluginsDir() const;
     void RebuildPluginRows();
     void NotifyPluginsTrack();
+    // Страницы плагинов -> view (если изменились)
+    void SyncPages();
+    bool InPlaylist(const std::filesystem::path& p) const;
+    // host->addFiles: дописать без повторов, play - сразу играть первый
+    void AddFilesFromPlugin(const std::vector<std::string>& paths, bool play);
 
     HWND hwnd_ = nullptr;
     float dpi_ = 96;
@@ -142,7 +148,8 @@ private:
     pm::PluginManager plugins_;
     std::vector<PluginRow> pluginRows_;
     std::wstring pluginCountText_;
-    bool pluginsRefreshPending_ = false;  // открыта папка плагинов - перечитать при возврате в окно
+    bool pluginsRefreshPending_ = false;
+    uint64_t pagesRevision_ = ~0ull;  // открыта папка плагинов - перечитать при возврате в окно
 
     std::filesystem::path exeDir_, assetsDir_, statePath_, libraryPath_;
     bool systemReduce_ = false;

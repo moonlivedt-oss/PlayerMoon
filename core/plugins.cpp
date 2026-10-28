@@ -64,6 +64,24 @@ namespace {
 
 PluginManager::Loaded* Self(void* ctx) { return static_cast<PluginManager::Loaded*>(ctx); }
 
+std::string Str(const char* s) { return s ? std::string(s) : std::string(); }
+
+std::vector<PluginAction> Actions(const PmAction* a, int count, int limit) {
+    std::vector<PluginAction> out;
+    for (int i = 0; a && i < count && i < limit; ++i) out.push_back({a[i].id, Str(a[i].label)});
+    return out;
+}
+
+// Копирование строки в буфер плагина (UTF-8, с нулём на конце)
+int CopyOut(const std::string& v, char* buffer, int size) {
+    if (!buffer || size <= 0 || v.empty() || static_cast<int>(v.size()) >= size) return 0;
+    std::copy(v.begin(), v.end(), buffer);
+    buffer[v.size()] = 0;
+    return static_cast<int>(v.size());
+}
+
+void InstallV2(PmHost& h);
+
 }  // namespace
 
 PluginManager::PluginManager() = default;
@@ -170,6 +188,7 @@ bool PluginManager::Load(size_t i) {
     h.seek = [](void* ctx, double s) {
         if (const auto& fn = Self(ctx)->owner->host_.seek) fn(s);
     };
+    InstallV2(h);
     h.addMenuItem = [](void* ctx, int id, const char* title) -> int {
         Loaded* s = Self(ctx);
         if (id < 0 || id > kMaxMenuId || !title || !*title) return 0;
@@ -186,6 +205,8 @@ bool PluginManager::Load(size_t i) {
     if (init(&raw->host, &raw->plugin) != 0) {
         menu_.erase(std::remove_if(menu_.begin(), menu_.end(), [&](const PluginMenuItem& m) { return m.plugin == i; }),
                     menu_.end());
+        pages_.erase(std::remove_if(pages_.begin(), pages_.end(), [&](const PluginPage& pg) { return pg.plugin == i; }),
+                     pages_.end());
         CloseLib(raw->lib);
         loaded_[i].reset();
         p.error = "плагин отказался запускаться";
@@ -206,6 +227,13 @@ void PluginManager::Unload(size_t i) {
     plugins_[i].loaded = false;
     menu_.erase(std::remove_if(menu_.begin(), menu_.end(), [&](const PluginMenuItem& m) { return m.plugin == i; }),
                 menu_.end());
+    pages_.erase(std::remove_if(pages_.begin(), pages_.end(), [&](const PluginPage& p) { return p.plugin == i; }),
+                 pages_.end());
+    ++pagesRevision_;
+    // Отложенные вызовы выгруженного плагина отменяются: его кода больше нет
+    LockGuard g(postLock_);
+    posted_.erase(std::remove_if(posted_.begin(), posted_.end(), [&](const Posted& p) { return p.plugin == i; }),
+                  posted_.end());
 }
 
 bool PluginManager::SetEnabled(size_t i, bool on) {
@@ -252,6 +280,137 @@ void PluginManager::InvokeMenuItem(size_t index) {
 void PluginManager::UnloadAll() {
     for (size_t i = 0; i < loaded_.size(); ++i) Unload(i);
     menu_.clear();
+    pages_.clear();
 }
+
+// ---------------- версия 2: страницы, post и прочее ----------------
+
+PluginPage* PluginManager::FindPage(size_t plugin, int pageId) {
+    for (auto& p : pages_)
+        if (p.plugin == plugin && p.id == pageId) return &p;
+    return nullptr;
+}
+
+void PluginManager::Post(size_t plugin, void (*fn)(void*), void* data) {
+    if (!fn) return;
+    {
+        LockGuard g(postLock_);
+        posted_.push_back({plugin, fn, data});
+    }
+    if (host_.wake) host_.wake();
+}
+
+void PluginManager::RunPosted() {
+    std::vector<Posted> batch;
+    {
+        LockGuard g(postLock_);
+        batch.swap(posted_);
+    }
+    for (const Posted& p : batch)
+        if (p.plugin < loaded_.size() && loaded_[p.plugin]) p.fn(p.data);
+}
+
+void PluginManager::PageAction(size_t pageIndex, int rowId, int actionId) {
+    if (pageIndex >= pages_.size()) return;
+    const PluginPage& page = pages_[pageIndex];
+    Loaded* l = page.plugin < loaded_.size() ? loaded_[page.plugin].get() : nullptr;
+    if (l && l->plugin.onPageAction) l->plugin.onPageAction(l->plugin.self, page.id, rowId, actionId);
+}
+
+namespace {
+
+void InstallV2(PmHost& h) {
+    h.post = [](void* ctx, void (*fn)(void*), void* data) {
+        Self(ctx)->owner->Post(Self(ctx)->index, fn, data);
+    };
+    h.pageCreate = [](void* ctx, int pageId, const char* title, const char* emptyText) -> int {
+        auto* s = Self(ctx);
+        auto* m = s->owner;
+        if (PluginPage* p = m->FindPage(s->index, pageId)) {
+            p->title = Str(title);
+            p->emptyText = Str(emptyText);
+        } else {
+            // Не больше двух страниц на плагин: вкладкам в панели нужно место
+            int mine = 0;
+            for (const auto& p2 : m->Pages()) mine += p2.plugin == s->index ? 1 : 0;
+            if (mine >= 2) return 0;
+            PluginPage page;
+            page.plugin = s->index;
+            page.id = pageId;
+            page.title = Str(title);
+            page.emptyText = Str(emptyText);
+            m->MutablePages().push_back(std::move(page));
+        }
+        m->Touch();
+        return 1;
+    };
+    h.pageSetActions = [](void* ctx, int pageId, const PmAction* actions, int count) {
+        auto* s = Self(ctx);
+        if (PluginPage* p = s->owner->FindPage(s->index, pageId)) {
+            p->actions = Actions(actions, count, 4);
+            s->owner->Touch();
+        }
+    };
+    h.pageSetRow = [](void* ctx, int pageId, const PmPageRow* row) {
+        auto* s = Self(ctx);
+        PluginPage* p = s->owner->FindPage(s->index, pageId);
+        if (!p || !row) return;
+        PluginPageRow r;
+        r.id = row->id;
+        r.title = Str(row->title);
+        r.subtitle = Str(row->subtitle);
+        r.status = Str(row->status);
+        r.progress = row->progress > 1 ? 1.f : row->progress;
+        r.state = row->state;
+        r.actions = Actions(row->actions, row->actionCount, 3);
+        auto it = std::find_if(p->rows.begin(), p->rows.end(), [&](const PluginPageRow& x) { return x.id == r.id; });
+        if (it != p->rows.end()) *it = std::move(r);
+        else p->rows.insert(p->rows.begin(), std::move(r));
+        s->owner->Touch();
+    };
+    h.pageRemoveRow = [](void* ctx, int pageId, int rowId) {
+        auto* s = Self(ctx);
+        if (PluginPage* p = s->owner->FindPage(s->index, pageId)) {
+            p->rows.erase(std::remove_if(p->rows.begin(), p->rows.end(),
+                                         [&](const PluginPageRow& x) { return x.id == rowId; }),
+                          p->rows.end());
+            s->owner->Touch();
+        }
+    };
+    h.pageShow = [](void* ctx, int pageId) {
+        auto* s = Self(ctx);
+        const auto& pages = s->owner->Pages();
+        for (size_t i = 0; i < pages.size(); ++i)
+            if (pages[i].plugin == s->index && pages[i].id == pageId && s->owner->Host().pageShow)
+                s->owner->Host().pageShow(i);
+    };
+    h.toast = [](void* ctx, const char* text) {
+        if (const auto& fn = Self(ctx)->owner->Host().toast) fn(Str(text));
+    };
+    h.clipboardText = [](void* ctx, char* buffer, int size) -> int {
+        const auto& fn = Self(ctx)->owner->Host().clipboardText;
+        return fn ? CopyOut(fn(), buffer, size) : 0;
+    };
+    h.openPath = [](void* ctx, const char* path) {
+        if (const auto& fn = Self(ctx)->owner->Host().openPath) fn(Str(path));
+    };
+    h.addFiles = [](void* ctx, const char* const* paths, int count, int play) {
+        const auto& fn = Self(ctx)->owner->Host().addFiles;
+        if (!fn || !paths) return;
+        std::vector<std::string> list;
+        for (int i = 0; i < count; ++i)
+            if (paths[i]) list.push_back(paths[i]);
+        fn(list, play != 0);
+    };
+    h.addLibraryFolder = [](void* ctx, const char* path) {
+        if (const auto& fn = Self(ctx)->owner->Host().addLibraryFolder) fn(Str(path));
+    };
+    h.pickFolder = [](void* ctx, const char* title, char* buffer, int size) -> int {
+        const auto& fn = Self(ctx)->owner->Host().pickFolder;
+        return fn ? CopyOut(fn(Str(title)), buffer, size) : 0;
+    };
+}
+
+}  // namespace
 
 }  // namespace pm

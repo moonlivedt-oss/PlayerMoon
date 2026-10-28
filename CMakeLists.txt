@@ -84,7 +84,7 @@ add_dependencies(pm_theme pm_assets)
 
 # Состояние интерфейса без Win32: раскладки, виджеты, переходы режимов (проверяется тестами)
 add_library(pm_view STATIC view/layout.cpp view/motion_params.cpp view/widgets.cpp view/marquee.cpp view/svg_arc.cpp
-    view/visualizer.cpp view/player_view.cpp)
+    view/visualizer.cpp view/player_view.cpp view/panel.cpp)
 target_include_directories(pm_view PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_view PUBLIC pm_theme pm_core pm_motion)
 target_compile_options(pm_view PRIVATE ${PM_WARNINGS})
@@ -105,10 +105,46 @@ add_custom_command(TARGET pm_plugin_history POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/plugins/history/plugin.json
         ${CMAKE_BINARY_DIR}/plugins/history/plugin.json)
 
+# Плагин «Загрузка музыки» (только Windows: запускает yt-dlp). Кладётся в plugins/downloader.
+if(WIN32)
+    add_library(pm_plugin_downloader SHARED plugins/downloader/downloader.cpp plugins/downloader/ytdlp.cpp)
+    target_include_directories(pm_plugin_downloader PRIVATE ${CMAKE_SOURCE_DIR})
+    target_compile_options(pm_plugin_downloader PRIVATE ${PM_WARNINGS})
+    target_link_libraries(pm_plugin_downloader PRIVATE shell32 ole32)
+    set_target_properties(pm_plugin_downloader PROPERTIES OUTPUT_NAME downloader PREFIX ""
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/downloader)
+    add_custom_command(TARGET pm_plugin_downloader POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/plugins/downloader/plugin.json
+            ${CMAKE_BINARY_DIR}/plugins/downloader/plugin.json)
+endif()
+
+# Поддельный yt-dlp для проверки плагина под Wine без сети (не входит в поставку)
+if(WIN32)
+    add_executable(pm_fake_ytdlp tests/fake_ytdlp/fake_ytdlp.cpp)
+    target_link_options(pm_fake_ytdlp PRIVATE -municode)
+    set_target_properties(pm_fake_ytdlp PROPERTIES OUTPUT_NAME yt-dlp RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tools)
+endif()
+
 # ---------- Тесты ----------
+# Тестовый плагин версии 2 (страницы, post из своего потока) - только для pm_tests
+add_library(pm_test_plugin_pages SHARED tests/plugin_pages/page_test.cpp)
+target_include_directories(pm_test_plugin_pages PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_options(pm_test_plugin_pages PRIVATE ${PM_WARNINGS})
+set_target_properties(pm_test_plugin_pages PROPERTIES OUTPUT_NAME pagetest PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test-plugins/pagetest
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test-plugins/pagetest
+    CXX_VISIBILITY_PRESET hidden)
+if(NOT WIN32)
+    target_link_libraries(pm_test_plugin_pages PRIVATE Threads::Threads)
+endif()
+add_custom_command(TARGET pm_test_plugin_pages POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/tests/plugin_pages/plugin.json
+        ${CMAKE_BINARY_DIR}/test-plugins/pagetest/plugin.json)
+
 add_executable(pm_tests tests/main.cpp tests/test_motion.cpp tests/test_json.cpp tests/test_theme.cpp
     tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp
-    tests/test_view.cpp tests/test_plugins.cpp)
+    tests/test_view.cpp tests/test_plugins.cpp tests/test_downloader.cpp
+    plugins/downloader/ytdlp.cpp)
 target_link_libraries(pm_tests PRIVATE pm_view pm_theme pm_core pm_motion)
 target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})
 # GCC 13 даёт ложное срабатывание stringop-overflow на vector::push_back при -O3 в тестах,
@@ -117,8 +153,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(pm_tests PRIVATE -Wno-stringop-overflow)
 endif()
 target_compile_definitions(pm_tests PRIVATE PM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    PM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
-add_dependencies(pm_tests pm_plugin_history)
+    PM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins" PM_TEST_PLUGINS_DIR="${CMAKE_BINARY_DIR}/test-plugins")
+add_dependencies(pm_tests pm_plugin_history pm_test_plugin_pages)
 enable_testing()
 add_test(NAME pm_tests COMMAND pm_tests)
 
@@ -128,7 +164,7 @@ if(WIN32)
     add_executable(PlayerMoon WIN32 ${PM_UI_SOURCES} ui/res/app.rc)
     target_link_libraries(PlayerMoon PRIVATE pm_view pm_theme pm_core pm_motion
         d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme advapi32 gdi32)
-    add_dependencies(PlayerMoon pm_plugin_history)
+    add_dependencies(PlayerMoon pm_plugin_history pm_plugin_downloader)
     target_compile_options(PlayerMoon PRIVATE ${PM_WARNINGS})
     target_link_options(PlayerMoon PRIVATE -municode)
     set_target_properties(PlayerMoon PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

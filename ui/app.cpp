@@ -25,10 +25,12 @@ constexpr wchar_t kInstanceMutex[] = L"Local\\PlayerMoon.Instance";
 constexpr UINT kWakeMessage = WM_APP + 1;     // аудиопоток: есть события для PumpEvents
 constexpr UINT kLibraryMessage = WM_APP + 2;  // сканер библиотеки закончил
 constexpr UINT kWatchMessage = WM_APP + 3;    // в папках библиотеки что-то поменялось
+constexpr UINT kPluginMessage = WM_APP + 4;   // плагин передал работу в поток окна (host->post)
 constexpr ULONG_PTR kCopyDataPaths = 0x504D;  // WM_COPYDATA: пути от второго экземпляра
 constexpr UINT_PTR kTickTimer = 1;            // раз в секунду: время в мини-режиме и на панели задач
 constexpr UINT_PTR kSaveTimer = 2;            // отложенное сохранение после изменений
 constexpr UINT_PTR kSaveTick = 3;             // во время игры - позиция раз в 30 секунд
+constexpr UINT_PTR kLazyTimer = 4;            // подсказки и уведомления: разовый кадр к нужному времени
 
 // Атрибуты DWM числами: в заголовках MinGW имён может не быть (как в RadialMenu)
 constexpr DWORD kDwmDarkMode = 20;
@@ -112,11 +114,12 @@ const char* RepeatToString(pm::Repeat r) {
 
 // Диалог выбора файлов или папки. Возвращает пустой список при отмене.
 std::vector<std::filesystem::path> PickPaths(HWND owner, bool folder, bool multi, const wchar_t* filterName,
-                                             const wchar_t* filterSpec) {
+                                             const wchar_t* filterSpec, const wchar_t* title = nullptr) {
     std::vector<std::filesystem::path> out;
     Microsoft::WRL::ComPtr<IFileOpenDialog> dlg;
     if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
         return out;
+    if (title) dlg->SetTitle(title);
     FILEOPENDIALOGOPTIONS opts = 0;
     dlg->GetOptions(&opts);
     opts |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
@@ -141,6 +144,20 @@ std::vector<std::filesystem::path> PickPaths(HWND owner, bool folder, bool multi
             CoTaskMemFree(path);
         }
     }
+    return out;
+}
+
+// Текст из буфера обмена в UTF-8 (пусто - нет текста)
+std::string ClipboardText(HWND owner) {
+    std::string out;
+    if (!OpenClipboard(owner)) return out;
+    if (HANDLE h = GetClipboardData(CF_UNICODETEXT)) {
+        if (const auto* w = static_cast<const wchar_t*>(GlobalLock(h))) {
+            out = ::text::WideToUtf8(w);
+            GlobalUnlock(h);
+        }
+    }
+    CloseClipboard();
     return out;
 }
 
@@ -464,7 +481,7 @@ void App::RebuildRows() {
     }
     wchar_t buf[64];
     swprintf(buf, 64, L"%d %ls, %ld мин", pl.Size(), TracksWord(pl.Size()), std::lround(total / 60));
-    countText_ = buf;
+    countText_ = pl.Size() > 0 ? buf : L"";
     view_.SetPlaylistSize(pl.Size());
 }
 
@@ -486,6 +503,8 @@ void App::LoadPaths(const std::vector<std::filesystem::path>& paths, bool append
     }
     if (!files.empty()) player_.LoadFiles(files, replaced);
     RebuildRows();
+    if (append && player_.GetPlaylist().Size() > before)
+        view_.ShowToast("Добавлено треков: " + std::to_string(player_.GetPlaylist().Size() - before), Now());
     // Дописанные треки не прерывают текущий; новый плейлист начинается сразу
     if (!append && player_.GetPlaylist().Size() > 0) player_.PlayIndex(0);
     else if (append && !player_.GetState().hasTrack && player_.GetPlaylist().Size() > before) player_.PlayIndex(before);
@@ -635,7 +654,7 @@ void App::ShowContextMenu(POINT screen) {
         case kMenuPlugins:
             plugins_.Discover({exeDir_ / L"plugins", UserPluginsDir()});
             RebuildPluginRows();
-            view_.ShowPanelTab(1, Now());
+            view_.ShowPanelTab(view_.PluginsTab(), Now());
             break;
         default:
             if (cmd >= kMenuLibraryFolderFirst && cmd < kMenuLibraryFolderFirst + folders.size()) {
@@ -782,8 +801,78 @@ void App::ShowMenu(view::Point at) {
 }
 
 float App::MeasureText(view::TextStyle style, const std::string& s) {
-    TextSpec spec = style == view::TextStyle::Title ? Painter::TitleSpec(view_) : Painter::MiniTitleSpec(view_);
+    TextSpec spec;
+    switch (style) {
+        case view::TextStyle::Title: spec = Painter::TitleSpec(view_); break;
+        case view::TextStyle::MiniTitle: spec = Painter::MiniTitleSpec(view_); break;
+        case view::TextStyle::Tab: spec = Painter::TabSpecFor(view_, false); break;
+        case view::TextStyle::TabSmall: spec = Painter::TabSpecFor(view_, true); break;
+        case view::TextStyle::Pill: spec = Painter::PillSpec(); break;
+        case view::TextStyle::Tooltip: spec = Painter::TooltipSpec(); break;
+    }
     return text_.Measure(::text::Utf8ToWide(s), spec);
+}
+
+void App::PageAction(int page, int rowId, int actionId) {
+    plugins_.PageAction(static_cast<size_t>(page), rowId, actionId);
+    SyncPages();
+    Invalidate();
+}
+
+void App::SyncPages() {
+    if (plugins_.PagesRevision() == pagesRevision_) return;
+    pagesRevision_ = plugins_.PagesRevision();
+    std::vector<view::PanelPage> pages;
+    for (const auto& src : plugins_.Pages()) {
+        view::PanelPage p;
+        p.title = src.title;
+        p.emptyText = src.emptyText;
+        for (const auto& a : src.actions) p.actions.push_back({a.id, a.label, 0});
+        for (const auto& r : src.rows) {
+            view::PanelRow row{r.id, r.title, r.subtitle, r.status, r.progress, r.state, {}};
+            for (const auto& a : r.actions) row.actions.push_back({a.id, a.label, 0});
+            p.rows.push_back(std::move(row));
+        }
+        pages.push_back(std::move(p));
+    }
+    view_.SetPages(std::move(pages), Now());
+    Invalidate();
+}
+
+bool App::InPlaylist(const std::filesystem::path& p) const {
+    const pm::Playlist& pl = player_.GetPlaylist();
+    for (int i = 0; i < pl.Size(); ++i)
+        if (pl.At(i).path == p) return true;
+    return false;
+}
+
+void App::AddFilesFromPlugin(const std::vector<std::string>& paths, bool play) {
+    std::vector<std::filesystem::path> files;
+    int playIndex = -1;
+    const pm::Playlist& pl = player_.GetPlaylist();
+    for (const auto& s : paths) {
+        const std::filesystem::path p = ::text::Utf8ToPath(s);
+        if (!pm::IsSupportedAudio(p)) continue;
+        // Уже в плейлисте (например, библиотека успела добавить) - не дублируем
+        int found = -1;
+        for (int i = 0; i < pl.Size() && found < 0; ++i)
+            if (pl.At(i).path == p) found = i;
+        if (found >= 0) {
+            if (playIndex < 0) playIndex = found;
+        } else {
+            files.push_back(p);
+        }
+    }
+    const int before = pl.Size();
+    if (!files.empty()) {
+        player_.LoadFiles(files, true);
+        RebuildRows();
+        if (playIndex < 0) playIndex = before;
+    }
+    if (play && playIndex >= 0) player_.PlayIndex(playIndex);
+    else if (!player_.GetState().hasTrack && player_.GetPlaylist().Size() > 0) player_.OpenAt(0, 0, false);
+    MarkDirty();
+    Invalidate();
 }
 
 // ---------------- кадры ----------------
@@ -833,8 +922,16 @@ void App::RenderFrame() {
             spectrum = &spectrum_;
         }
     }
+    SyncPages();
+    view_.SetBusy(scanner_.Running(), "Поиск музыки");
     view_.Update(t, snap, spectrum, visible_);
     ApplyTopmost();
+    // Подсказка или уведомление ждут своего времени: разовый таймер вместо цикла кадров
+    const double wake = view_.NextLazyWake();
+    if (wake < 1e300 && !view_.NeedsFrames())
+        SetTimer(hwnd_, kLazyTimer, static_cast<UINT>(std::clamp((wake - t) * 1000.0 + 5, 10.0, 60000.0)), nullptr);
+    else
+        KillTimer(hwnd_, kLazyTimer);
     taskbar_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
     if (lastPlaying_ != (ps.playing ? 1 : 0)) {
         if (lastPlaying_ >= 0) plugins_.NotifyPlayState(ps.playing);
@@ -1046,6 +1143,15 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
                 SaveCurrentState();
             }
             if (wp == kSaveTick) SaveCurrentState();
+            if (wp == kLazyTimer) {
+                KillTimer(hwnd_, kLazyTimer);
+                Invalidate();
+            }
+            return 0;
+        case kPluginMessage:
+            plugins_.RunPosted();
+            SyncPages();
+            Invalidate();
             return 0;
         case WM_COMMAND:
             // Кнопки в превью окна на панели задач
@@ -1225,7 +1331,7 @@ void App::OnLibraryScanned() {
     for (const auto& t : library_.Tracks()) known.insert(t.path);
     std::vector<pm::PlaylistEntry> fresh;
     for (const auto& t : tracks)
-        if (!known.count(t.path)) fresh.push_back({t.path, t.meta});
+        if (!known.count(t.path) && !InPlaylist(t.path)) fresh.push_back({t.path, t.meta});
     const bool wasEmpty = library_.Tracks().empty();
     library_.SetTracks(std::move(tracks));
     library_.Save(libraryPath_);
@@ -1235,6 +1341,7 @@ void App::OnLibraryScanned() {
     } else if (playlistFromLibrary_ && !fresh.empty() && !wasEmpty) {
         player_.LoadTracks(fresh, true);
         RebuildRows();
+        view_.ShowToast(fresh.size() == 1 ? "Новый трек в библиотеке" : "Новых треков в библиотеке: " + std::to_string(fresh.size()), Now());
         MarkDirty();
     }
     if (rescanPending_) {
@@ -1283,29 +1390,64 @@ std::filesystem::path App::UserPluginsDir() const {
 
 void App::InitPlugins(const std::set<std::string>& enabled) {
     plugins_.SetDataRoot(statePath_.parent_path() / L"plugins-data");
-    plugins_.SetHost({[this] {
-                          const pm::PlayerState ps = player_.GetState();
-                          return PmPlayback{ps.playing ? 1 : 0, ps.index, ps.count, ps.position, ps.duration,
-                                            ps.volume};
-                      },
-                      [this](int cmd) {
-                          switch (cmd) {
-                              case PM_CMD_TOGGLE: player_.Toggle(); break;
-                              case PM_CMD_PLAY: player_.Play(); break;
-                              case PM_CMD_PAUSE: player_.Pause(); break;
-                              case PM_CMD_NEXT: player_.Next(); break;
-                              case PM_CMD_PREV: player_.Prev(); break;
-                              default: break;
-                          }
-                          Invalidate();
-                      },
-                      [this](double s) {
-                          player_.Seek(s);
-                          Invalidate();
-                      }});
+    pm::PluginHostFunctions host;
+    host.playback = [this] {
+        const pm::PlayerState ps = player_.GetState();
+        return PmPlayback{ps.playing ? 1 : 0, ps.index, ps.count, ps.position, ps.duration, ps.volume};
+    };
+    host.command = [this](int cmd) {
+        switch (cmd) {
+            case PM_CMD_TOGGLE: player_.Toggle(); break;
+            case PM_CMD_PLAY: player_.Play(); break;
+            case PM_CMD_PAUSE: player_.Pause(); break;
+            case PM_CMD_NEXT: player_.Next(); break;
+            case PM_CMD_PREV: player_.Prev(); break;
+            default: break;
+        }
+        Invalidate();
+    };
+    host.seek = [this](double s) {
+        player_.Seek(s);
+        Invalidate();
+    };
+    // Из потоков плагинов: только разбудить окно
+    HWND hwnd = hwnd_;
+    host.wake = [hwnd] { PostMessageW(hwnd, kPluginMessage, 0, 0); };
+    host.pageShow = [this](size_t page) {
+        SyncPages();
+        view_.ShowPanelTab(view_.PageTab(static_cast<int>(page)), Now());
+        Invalidate();
+    };
+    host.toast = [this](const std::string& t) {
+        view_.ShowToast(t, Now());
+        Invalidate();
+    };
+    host.clipboardText = [this] { return ClipboardText(hwnd_); };
+    host.openPath = [this](const std::string& p) {
+        ShellExecuteW(hwnd_, L"open", ::text::Utf8ToWide(p).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    };
+    host.addFiles = [this](const std::vector<std::string>& paths, bool play) { AddFilesFromPlugin(paths, play); };
+    host.addLibraryFolder = [this](const std::string& p) {
+        std::error_code ec;
+        const std::filesystem::path dir = ::text::Utf8ToPath(p);
+        std::filesystem::create_directories(dir, ec);
+        if (library_.AddFolder(dir)) {
+            library_.Save(libraryPath_);
+            if (started_) {
+                RestartWatcher();
+                StartLibraryScan();
+            }
+        }
+    };
+    host.pickFolder = [this](const std::string& title) {
+        auto paths = PickPaths(hwnd_, true, false, nullptr, nullptr, ::text::Utf8ToWide(title).c_str());
+        return paths.empty() ? std::string() : ::text::PathToUtf8(paths[0]);
+    };
+    plugins_.SetHost(host);
     plugins_.Discover({exeDir_ / L"plugins", UserPluginsDir()});
     plugins_.EnableSaved(enabled);
     RebuildPluginRows();
+    SyncPages();
 }
 
 void App::RebuildPluginRows() {
@@ -1322,6 +1464,7 @@ void App::RebuildPluginRows() {
     swprintf(buf, 64, L"включено %d из %d", enabled, static_cast<int>(pluginRows_.size()));
     pluginCountText_ = buf;
     view_.SetPlugins(on, Now());
+    SyncPages();
     Invalidate();
 }
 
@@ -1336,7 +1479,10 @@ void App::TogglePlugin(int index) {
                                L"Включайте только плагины, которым доверяете.";
         if (MessageBoxW(hwnd_, q.c_str(), L"Плагины", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     }
-    plugins_.SetEnabled(static_cast<size_t>(index), !p.enabled);
+    const bool wasEnabled = p.enabled;
+    const std::string name = p.name;
+    if (!plugins_.SetEnabled(static_cast<size_t>(index), !wasEnabled) && !wasEnabled)
+        view_.ShowToast("Плагин «" + name + "» не запустился", Now());
     RebuildPluginRows();
     MarkDirty();
 }

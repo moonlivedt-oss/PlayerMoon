@@ -1,0 +1,9 @@
+{
+  "id": "downloader",
+  "name": "Загрузка музыки",
+  "version": "1.0",
+  "description": "Скачивает треки, альбомы и плейлисты по ссылке из YouTube Music, YouTube и Яндекс Музыки через yt-dlp.",
+  "author": "PlayerMoon",
+  "library": "downloader",
+  "apiVersion": 2
+}

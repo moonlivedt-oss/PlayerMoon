@@ -26,7 +26,29 @@
 
 namespace view {
 
-enum class TextStyle { Title, MiniTitle };
+// Стили текста, ширину которых view спрашивает у окна (размеры - в ui/painter.cpp)
+enum class TextStyle { Title, MiniTitle, Tab, TabSmall, Pill, Tooltip };
+
+// Страница плагина в панели (копия данных PluginManager, переведённая в вид для показа)
+struct PanelAction {
+    int id = 0;
+    std::string label;
+    float width = 0;  // ширина кнопки-«пилюли» в DIP (считает SetPages)
+};
+
+struct PanelRow {
+    int id = 0;
+    std::string title, subtitle, status;
+    float progress = -1;  // меньше 0 - без полосы
+    int state = 0;        // PM_ROW_*: 0 обычная, 1 идёт работа, 2 готово, 3 ошибка, 4 в очереди
+    std::vector<PanelAction> actions;
+};
+
+struct PanelPage {
+    std::string title, emptyText;
+    std::vector<PanelAction> actions;  // кнопки шапки
+    std::vector<PanelRow> rows;
+};
 
 // Обратная связь с окном и плеером
 class IViewHost {
@@ -51,6 +73,10 @@ public:
     // Раздел «Плагины»: включить или выключить плагин, открыть папку плагинов
     virtual void TogglePlugin(int index) = 0;
     virtual void OpenPluginsFolder() = 0;
+    // Страница плагина: нажата кнопка (rowId = 0 - кнопка шапки)
+    virtual void PageAction(int page, int rowId, int actionId) = 0;
+    // Пустой плейлист: кнопки «Открыть папку» и «Открыть файлы»
+    virtual void OpenFiles(bool folder) = 0;
     // Ширина текста в DIP для бегущей строки
     virtual float MeasureText(TextStyle style, const std::string& text) = 0;
 };
@@ -128,12 +154,43 @@ public:
 
     void TogglePlaylist(double now);
     void ToggleMini(double now);
-    // Вкладки панели: 0 - очередь, 1 - плагины. Открывает панель, если она закрыта.
+    // ----- вкладки панели: «Очередь», страницы плагинов, «Плагины» -----
+    enum class TabKind { Queue, Page, Plugins };
+    int TabCount() const { return 2 + static_cast<int>(pages.size()); }
+    TabKind KindOf(int tab) const {
+        return tab <= 0 ? TabKind::Queue : tab >= TabCount() - 1 ? TabKind::Plugins : TabKind::Page;
+    }
+    int PageOf(int tab) const { return tab - 1; }
+    int PluginsTab() const { return TabCount() - 1; }
+    int PageTab(int page) const { return 1 + page; }
+    TabKind CurrentKind() const { return KindOf(panelTab); }
+    // Открывает панель, если она закрыта, и переключает вкладку
     void ShowPanelTab(int tab, double now);
     // Плагины для раздела: включён ли каждый (переключатели анимируются)
     void SetPlugins(const std::vector<bool>& enabled, double now);
+    // Страницы плагинов (вкладка остаётся на месте, если её страница жива)
+    void SetPages(std::vector<PanelPage> newPages, double now);
     // Сколько строк в списке текущей вкладки (у плагинов последняя - «Открыть папку плагинов»)
-    int RowCount() const { return panelTab == 0 ? listCount : pluginCount + 1; }
+    int RowCount() const;
+
+    // Геометрия содержимого вкладок (общая для попадания мышью и рисования)
+    static constexpr float kPageRowHeight = 64;
+    static constexpr float kPillHeight = 26;
+    float PageBarHeight(int page) const;
+    Rect PageActionRect(int page, int i) const;  // кнопки шапки страницы
+    Rect PageRowRect(int page, int row) const;
+    Rect PageRowActionRect(int page, int row, int k) const;  // кнопки строки справа
+    Rect EmptyActionRect(int i) const;  // пустой плейлист: 0 - «Открыть папку», 1 - «Открыть файлы»
+    float ContentHeight() const;  // высота прокручиваемого списка текущей вкладки
+    float ListViewHeight() const;  // видимая высота списка (без шапки страницы)
+
+    // ----- подсказки и уведомления -----
+    void ShowToast(const std::string& text, double now);
+    // Занятость (поиск музыки) - пульсирующая подпись в шапке очереди
+    void SetBusy(bool on, const std::string& text);
+    // Когда понадобится следующий кадр по «ленивому» таймеру (подсказка, уведомление);
+    // бесконечность - не нужен. Такие ожидания не держат цикл кадров - окно ставит таймер.
+    double NextLazyWake() const;
 
     // ----- кадр -----
     // spectrum - полосы спектра или nullptr (окно не видно, мини-режим, пауза)
@@ -164,8 +221,28 @@ public:
     std::vector<motion::Tween> rowHover;
     int hoverRow = -1;
     int listCount = 0;
-    int panelTab = 0;             // 0 - очередь, 1 - плагины
+    int panelTab = 0;             // индекс вкладки (см. KindOf)
     motion::Tween tabAnim{1};     // проявление списка после смены вкладки
+    std::vector<PanelPage> pages;
+    std::vector<Rect> tabRects;   // вкладки в шапке панели
+    std::vector<motion::Tween> tabHover;
+    float tabTextSize = 15;       // при трёх и больше вкладках - мельче
+    motion::Tween tabLineX{0}, tabLineW{0};  // полоска под активной вкладкой (едет при смене)
+    // Наведение на кнопку-«пилюлю»: строка (-1 шапка страницы, -3 пустой плейлист) и номер
+    int hoverPillRow = -2, hoverPillIdx = -1;
+    motion::Tween pillHover{0};
+    int pressedRow = -1;          // нажатая строка (лёгкое уменьшение)
+    motion::Tween rowPress{0};
+    motion::Tween scrollbarAlpha{0};
+    // Подсказка над элементом
+    std::string tooltipText;
+    Rect tooltipAnchor;
+    motion::Tween tooltipAlpha{0};
+    // Уведомление
+    std::string toastText;
+    motion::Tween toastAlpha{0};
+    bool busy = false;
+    std::string busyText;
     int pluginCount = 0;
     std::vector<motion::Tween> pluginOn;  // положение переключателей 0..1
     bool showRemaining = false;   // справа - оставшееся время (клик по времени)
@@ -215,6 +292,16 @@ private:
     void Activate(Elem e);
     void SetHovered(Elem e);
     void SwitchTab(int tab);
+    void LayoutTabs();
+    int TabAt(Point p) const;
+    // Кнопка-«пилюля» под точкой: true и row/idx (row: -1 шапка страницы, -3 пустой плейлист)
+    bool PillAt(Point p, int* row, int* idx) const;
+    void SetPillHover(int row, int idx);
+    void UpdateTooltip(Point p);
+    void HideTooltip();
+    std::string TooltipFor(Elem e, Point p) const;
+    void ShowScrollbar(bool autoHide);
+    void ScheduleLazy(double at, std::function<void()> fn);
     int RowAt(Point p) const;
     Size FullWindowSize(bool withPanel) const;
 
@@ -224,6 +311,15 @@ private:
         std::function<void()> fn;
     };
     std::vector<Pending> pending_;
+    std::vector<Pending> lazy_;  // не держат цикл кадров
+    Elem tooltipElem_ = Elem::Count;
+    int tooltipGen_ = 0, toastGen_ = 0, scrollGen_ = 0;
+    double tooltipHiddenAt_ = -10;
+    bool overList_ = false;
+    int pressedTab_ = -1;
+    int pressedPillRow_ = -2, pressedPillIdx_ = -1;
+    Point lastMouse_;
+    float emptyPillW_[2] = {120, 120};
     Elem hovered_ = Elem::Count;
     Elem pressed_ = Elem::Count;
     SliderState* captureSlider_ = nullptr;

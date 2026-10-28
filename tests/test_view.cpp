@@ -1,5 +1,6 @@
 // Интерфейс без окна: раскладка «Классика» против координат макета, переходы режимов,
 // правило «ноль кадров в покое», бегущая строка, визуализатор.
+#include <array>
 #include <cmath>
 
 #include "tests/check.h"
@@ -49,7 +50,10 @@ public:
     void ShowRowMenu(int row, view::Point) override { rowMenu = row; }
     void TogglePlugin(int index) override { toggledPlugin = index; }
     void OpenPluginsFolder() override { ++folderOpens; }
-    int rowMenu = -1, toggledPlugin = -1, folderOpens = 0;
+    void PageAction(int page, int rowId, int actionId) override { lastAction = {page, rowId, actionId}; }
+    void OpenFiles(bool folder) override { openFiles = folder ? 1 : 2; }
+    int rowMenu = -1, toggledPlugin = -1, folderOpens = 0, openFiles = 0;
+    std::array<int, 3> lastAction{-1, -1, -1};
     float MeasureText(view::TextStyle, const std::string& t) override { return static_cast<float>(t.size()) * 9.f; }
 };
 
@@ -366,4 +370,96 @@ TEST(ViewPanelTabsWheelAndTime) {
     CHECK(host.rowMenu == 1);
     v.OnRightClick({10, 300});
     CHECK(host.menus == 1);
+}
+
+TEST(ViewPagesTooltipsToasts) {
+    using view::Elem;
+    FakeHost host;
+    view::PlayerView v;
+    v.SetHost(&host);
+    v.ApplyTheme(Lib().Make("glass"), Lib().Layout("classic"), false, 0, false);
+    view::PlaybackSnapshot s;
+    s.hasTrack = true;
+    s.count = 0;
+    s.index = -1;
+    v.Update(0, s, nullptr, true);
+    const auto& f = v.frame;
+
+    // Страница плагина: вкладка между «Очередь» и «Плагины», шапка с кнопками, строки с кнопками
+    view::PanelPage page;
+    page.title = "Загрузки";
+    page.emptyText = "Пусто";
+    page.actions = {{1, "Вставить ссылку"}, {2, "Папка"}};
+    view::PanelRow row;
+    row.id = 100;
+    row.title = "Трек";
+    row.progress = 0.5f;
+    row.state = 1;
+    row.actions = {{1, "Отмена"}};
+    page.rows = {row};
+    v.SetPages({page}, 0.1);
+    CHECK(v.TabCount() == 3 && v.PluginsTab() == 2 && v.tabRects.size() == 3);
+    CHECK(v.tabRects[1].x > v.tabRects[0].Right() && v.tabRects[2].x > v.tabRects[1].Right());
+    v.ShowPanelTab(v.PageTab(0), 0.1);
+    double t = 0.1;
+    for (; t < 1.5; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(v.playlistOpen && v.CurrentKind() == view::PlayerView::TabKind::Page && v.RowCount() == 1);
+    // Кнопка шапки: нажатие и отпускание на ней - действие с rowId 0
+    const view::Rect a1 = v.PageActionRect(0, 1);
+    CHECK(a1.x > v.PageActionRect(0, 0).Right());
+    v.OnMouseDown({a1.CenterX(), a1.CenterY()}, t);
+    v.OnMouseUp({a1.CenterX(), a1.CenterY()}, t);
+    CHECK(host.lastAction == (std::array<int, 3>{0, 0, 2}));
+    // Кнопка строки - справа в строке
+    const view::Rect ra = v.PageRowActionRect(0, 0, 0);
+    CHECK(ra.Right() <= v.PageRowRect(0, 0).Right() && ra.y > v.PageRowRect(0, 0).y);
+    v.OnMouseMove({ra.CenterX(), ra.CenterY()}, t);
+    CHECK(v.hoverPillRow == 0 && v.hoverPillIdx == 0);
+    v.OnMouseDown({ra.CenterX(), ra.CenterY()}, t);
+    v.OnMouseUp({ra.CenterX(), ra.CenterY()}, t);
+    CHECK(host.lastAction == (std::array<int, 3>{0, 100, 1}));
+    // Плагин убрал страницу - вкладка возвращается к очереди
+    v.SetPages({}, t);
+    CHECK(v.TabCount() == 2 && v.panelTab == 0);
+
+    // Пустой плейлист: кнопки «Открыть папку» и «Открыть файлы»
+    const view::Rect e1 = v.EmptyActionRect(1);
+    v.OnMouseDown({e1.CenterX(), e1.CenterY()}, t);
+    v.OnMouseUp({e1.CenterX(), e1.CenterY()}, t);
+    CHECK(host.openFiles == 2);
+
+    // Подсказка: не сразу, а по «ленивому» таймеру, который не держит кадры
+    for (; t < 3; t += 0.05) v.Update(t, s, nullptr, true);
+    const view::Rect next = f[Elem::Next];
+    v.OnMouseMove({next.CenterX(), next.CenterY()}, t);
+    CHECK(v.tooltipAlpha.Target() == 0 && v.NextLazyWake() > t && v.NextLazyWake() < t + 1);
+    v.Update(t + 0.6, s, nullptr, true);
+    CHECK(v.tooltipAlpha.Target() == 1 && v.tooltipText == "Следующий трек");
+    // Над прогрессом подсказка - время под мышью и едет за ней
+    s.duration = 200;
+    v.Update(t + 0.7, s, nullptr, true);
+    const view::Rect sk = f[Elem::Seek];
+    v.OnMouseMove({sk.x + sk.w / 2, sk.CenterY()}, t + 0.7);
+    v.Update(t + 0.75, s, nullptr, true);  // «тёплая» подсказка - сразу
+    CHECK(v.tooltipText == "1:40");
+    v.OnMouseLeave(t + 0.8);
+    CHECK(v.tooltipAlpha.Target() == 0);
+
+    // Уведомление появляется и само скрывается
+    v.ShowToast("Скачано: Трек", t + 1);
+    CHECK(v.toastAlpha.Target() == 1);
+    double wake = v.NextLazyWake();
+    CHECK(wake > t + 3 && wake < t + 8);
+    v.Update(wake + 0.01, s, nullptr, true);
+    CHECK(v.toastAlpha.Target() == 0);
+    // После всех анимаций - снова покой
+    for (double u = wake; u < wake + 2; u += 0.05) v.Update(u, s, nullptr, true);
+    CHECK(!v.NeedsFrames());
+    // Занятость в шапке очереди держит кадры (пульсация), пока панель открыта
+    v.SetBusy(true, "Поиск музыки");
+    v.Update(wake + 2.1, s, nullptr, true);
+    CHECK(v.NeedsFrames());
+    v.SetBusy(false, "");
+    v.Update(wake + 2.2, s, nullptr, true);
+    CHECK(!v.NeedsFrames());
 }
