@@ -1,0 +1,237 @@
+// Теги на синтетических файлах: ID3v2.3 и 2.4 с обложкой, ID3v1, FLAC, WAV, длительность MP3
+#include <cstring>
+
+#include "core/tags.h"
+#include "tests/check.h"
+#include "tests/wav_util.h"
+
+namespace {
+
+using tests::PutBe32;
+using tests::PutStr;
+
+class MemSource : public pm::ByteSource {
+public:
+    explicit MemSource(std::vector<uint8_t> b) : b_(std::move(b)) {}
+    uint64_t Size() const override { return b_.size(); }
+    size_t ReadAt(uint64_t off, void* dst, size_t n) override {
+        if (off >= b_.size()) return 0;
+        n = std::min<size_t>(n, b_.size() - static_cast<size_t>(off));
+        std::memcpy(dst, b_.data() + off, n);
+        return n;
+    }
+
+private:
+    std::vector<uint8_t> b_;
+};
+
+void PutSyncsafe(std::vector<uint8_t>& b, uint32_t v) {
+    b.push_back(static_cast<uint8_t>((v >> 21) & 0x7F));
+    b.push_back(static_cast<uint8_t>((v >> 14) & 0x7F));
+    b.push_back(static_cast<uint8_t>((v >> 7) & 0x7F));
+    b.push_back(static_cast<uint8_t>(v & 0x7F));
+}
+
+void Frame(std::vector<uint8_t>& tag, const std::string& id, const std::vector<uint8_t>& body, int major) {
+    PutStr(tag, id);
+    if (major == 4) PutSyncsafe(tag, static_cast<uint32_t>(body.size()));
+    else PutBe32(tag, static_cast<uint32_t>(body.size()));
+    tag.push_back(0);
+    tag.push_back(0);
+    tag.insert(tag.end(), body.begin(), body.end());
+}
+
+std::vector<uint8_t> TextBody(int enc, const std::vector<uint8_t>& bytes) {
+    std::vector<uint8_t> b{static_cast<uint8_t>(enc)};
+    b.insert(b.end(), bytes.begin(), bytes.end());
+    return b;
+}
+
+std::vector<uint8_t> Utf8(const std::string& s) { return {s.begin(), s.end()}; }
+
+// UTF-16LE с BOM (кодировка 1 в ID3)
+std::vector<uint8_t> Utf16Bom(const std::u16string& s) {
+    std::vector<uint8_t> b{0xFF, 0xFE};
+    for (char16_t c : s) {
+        b.push_back(static_cast<uint8_t>(c));
+        b.push_back(static_cast<uint8_t>(c >> 8));
+    }
+    return b;
+}
+
+const std::vector<uint8_t> kPng = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4};
+
+std::vector<uint8_t> MakeId3(int major) {
+    std::vector<uint8_t> frames;
+    Frame(frames, "TIT2", TextBody(1, Utf16Bom(u"Лунный свет")), major);
+    Frame(frames, "TPE1", TextBody(3, Utf8("Северный Ветер")), major);
+    Frame(frames, "TALB", TextBody(0, {'A', 'l', 'b', 0xE9}), major);  // Latin-1: é
+    std::vector<uint8_t> apic{3};  // UTF-8
+    PutStr(apic, "image/png");
+    apic.push_back(0);
+    apic.push_back(3);  // передняя обложка
+    PutStr(apic, "desc");
+    apic.push_back(0);
+    apic.insert(apic.end(), kPng.begin(), kPng.end());
+    Frame(frames, "APIC", apic, major);
+    std::vector<uint8_t> tag;
+    PutStr(tag, "ID3");
+    tag.push_back(static_cast<uint8_t>(major));
+    tag.push_back(0);
+    tag.push_back(0);
+    PutSyncsafe(tag, static_cast<uint32_t>(frames.size() + 16));  // с заполнителем
+    tag.insert(tag.end(), frames.begin(), frames.end());
+    tag.insert(tag.end(), 16, 0);
+    return tag;
+}
+
+// Кадр MPEG1 Layer III 128 кбит/с 44.1 кГц стерео с заголовком Xing на frames кадров
+std::vector<uint8_t> MakeXingFrame(uint32_t frames) {
+    std::vector<uint8_t> f{0xFF, 0xFB, 0x90, 0x00};
+    f.insert(f.end(), 32, 0);  // побочная информация
+    PutStr(f, "Xing");
+    PutBe32(f, 1);  // есть число кадров
+    PutBe32(f, frames);
+    f.resize(417, 0);
+    return f;
+}
+
+}  // namespace
+
+TEST(Id3v23And24WithCover) {
+    for (int major : {3, 4}) {
+        std::vector<uint8_t> file = MakeId3(major);
+        const auto frame = MakeXingFrame(1000);
+        file.insert(file.end(), frame.begin(), frame.end());
+        MemSource src(file);
+        pm::TagInfo t;
+        CHECK(pm::ReadTags(src, t, true));
+        CHECK(t.title == "Лунный свет");
+        CHECK(t.artist == "Северный Ветер");
+        CHECK(t.album == "Alb\xC3\xA9");
+        CHECK(t.coverMime == "image/png");
+        CHECK(t.cover == kPng);
+        // 1000 кадров * 1152 сэмпла / 44100 = 26.12 с
+        CHECK_NEAR(t.duration, 1000.0 * 1152 / 44100, 0.01);
+        // Без обложки - быстрее и без картинки
+        pm::TagInfo noCover;
+        CHECK(pm::ReadTags(src, noCover, false));
+        CHECK(noCover.cover.empty() && noCover.title == "Лунный свет");
+    }
+}
+
+TEST(Id3v1AndCbrDuration) {
+    // Постоянный битрейт 128 кбит/с без Xing: длительность по размеру
+    std::vector<uint8_t> file;
+    for (int i = 0; i < 100; ++i) {
+        std::vector<uint8_t> f{0xFF, 0xFB, 0x90, 0x00};
+        f.resize(417, 0x11);
+        file.insert(file.end(), f.begin(), f.end());
+    }
+    std::vector<uint8_t> v1(128, 0);
+    std::memcpy(v1.data(), "TAG", 3);
+    std::memcpy(v1.data() + 3, "Old Title", 9);
+    std::memcpy(v1.data() + 33, "Old Artist", 10);
+    file.insert(file.end(), v1.begin(), v1.end());
+    MemSource src(file);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, false));
+    CHECK(t.title == "Old Title" && t.artist == "Old Artist");
+    CHECK_NEAR(t.duration, 100 * 417 * 8.0 / 128000, 0.01);
+}
+
+TEST(FlacTagsAndPicture) {
+    std::vector<uint8_t> f;
+    PutStr(f, "fLaC");
+    // STREAMINFO: 44100 Гц, 441000 сэмплов = 10 с
+    std::vector<uint8_t> si(34, 0);
+    const uint32_t rate = 44100;
+    const uint64_t samples = 441000;
+    si[10] = static_cast<uint8_t>(rate >> 12);
+    si[11] = static_cast<uint8_t>(rate >> 4);
+    si[12] = static_cast<uint8_t>(((rate & 0xF) << 4) | (1 << 1));
+    si[13] = static_cast<uint8_t>((15 << 4) | ((samples >> 32) & 0xF));
+    si[14] = static_cast<uint8_t>(samples >> 24);
+    si[15] = static_cast<uint8_t>(samples >> 16);
+    si[16] = static_cast<uint8_t>(samples >> 8);
+    si[17] = static_cast<uint8_t>(samples);
+    f.push_back(0);
+    f.push_back(0);
+    f.push_back(0);
+    f.push_back(34);
+    f.insert(f.end(), si.begin(), si.end());
+    // VORBIS_COMMENT (числа little endian)
+    std::vector<uint8_t> vc;
+    tests::PutLe32(vc, 3);
+    PutStr(vc, "pm!");
+    const std::vector<std::string> comments = {"TITLE=Город спит", "artist=Кварц", "ALBUM=Ночные окна"};
+    tests::PutLe32(vc, static_cast<uint32_t>(comments.size()));
+    for (const auto& c : comments) {
+        tests::PutLe32(vc, static_cast<uint32_t>(c.size()));
+        PutStr(vc, c);
+    }
+    f.push_back(4);
+    f.push_back(0);
+    f.push_back(static_cast<uint8_t>(vc.size() >> 8));
+    f.push_back(static_cast<uint8_t>(vc.size()));
+    f.insert(f.end(), vc.begin(), vc.end());
+    // PICTURE, последний блок
+    std::vector<uint8_t> pic;
+    PutBe32(pic, 3);
+    PutBe32(pic, 10);
+    PutStr(pic, "image/jpeg");
+    PutBe32(pic, 0);
+    for (int i = 0; i < 4; ++i) PutBe32(pic, 0);
+    const std::vector<uint8_t> jpg = {0xFF, 0xD8, 0xFF, 0xE0, 9, 9};
+    PutBe32(pic, static_cast<uint32_t>(jpg.size()));
+    pic.insert(pic.end(), jpg.begin(), jpg.end());
+    f.push_back(0x80 | 6);
+    f.push_back(0);
+    f.push_back(static_cast<uint8_t>(pic.size() >> 8));
+    f.push_back(static_cast<uint8_t>(pic.size()));
+    f.insert(f.end(), pic.begin(), pic.end());
+    MemSource src(f);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, true));
+    CHECK(t.title == "Город спит" && t.artist == "Кварц" && t.album == "Ночные окна");
+    CHECK_NEAR(t.duration, 10.0, 1e-9);
+    CHECK(t.coverMime == "image/jpeg" && t.cover == jpg);
+}
+
+TEST(WavInfoAndDuration) {
+    std::vector<uint8_t> list;
+    PutStr(list, "LIST");
+    std::vector<uint8_t> body;
+    PutStr(body, "INFO");
+    auto sub = [&](const char* id, const std::string& v) {
+        PutStr(body, id);
+        tests::PutLe32(body, static_cast<uint32_t>(v.size() + 1));
+        PutStr(body, v);
+        body.push_back(0);
+        if ((v.size() + 1) & 1) body.push_back(0);
+    };
+    sub("INAM", "Тёплый шум");
+    sub("IART", "Ольга Ветрова");
+    tests::PutLe32(list, static_cast<uint32_t>(body.size()));
+    list.insert(list.end(), body.begin(), body.end());
+    MemSource src(tests::MakeWav(0.5, 44100, 440, list));
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, false));
+    CHECK(t.title == "Тёплый шум" && t.artist == "Ольга Ветрова");
+    CHECK_NEAR(t.duration, 0.5, 1e-3);
+}
+
+TEST(BrokenFilesDoNotCrash) {
+    // Обрезанные и мусорные данные: функция просто ничего не находит
+    std::vector<uint8_t> id3 = MakeId3(3);
+    id3.resize(30);
+    MemSource a(id3);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(a, t, true));
+    std::vector<uint8_t> junk(5000);
+    for (size_t i = 0; i < junk.size(); ++i) junk[i] = static_cast<uint8_t>(i * 131 + 7);
+    MemSource b(junk);
+    CHECK(pm::ReadTags(b, t, true));
+    MemSource c(std::vector<uint8_t>{'f', 'L', 'a', 'C', 0x86, 0xFF, 0xFF, 0xFF});
+    CHECK(pm::ReadTags(c, t, true));
+}
