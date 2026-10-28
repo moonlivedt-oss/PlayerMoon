@@ -1,763 +1,2022 @@
 {
   "_info": {
-    "source": "mockup/index.html, блок theme:begin..theme:end",
+    "source": "mockup/index.html: блоки theme:begin..theme:end и схема pm-schema",
     "units": "размеры в px (DIP при 100%), длительности в мс, цвета #RRGGBBAA",
     "font": [
       "Segoe UI Variable Text",
       "Segoe UI Variable Display",
       "Segoe UI"
-    ]
+    ],
+    "compose": "итоговая тема = skins[skin] + layouts[layout] + пользовательские settings поверх"
   },
-  "glass": {
-    "effect": {
-      "backdrop": "acrylic",
-      "tint": 0.42,
-      "blur": 40,
-      "saturate": 1.6,
-      "noise": 0.05,
-      "cover-ambient": 0.6,
-      "cover-ambient-blur": 36,
-      "grid": 0,
-      "hover-scale": 1.08,
-      "press-scale": 0.9,
-      "thumb-idle": 1,
-      "thumb-hover": 1.45,
-      "text-shift-x": 0,
-      "text-shift-y": 10,
-      "spin": 0
-    },
-    "color": {
-      "win-base": "#14141E8C",
-      "win-border": "#FFFFFF24",
-      "text": "#FFFFFFFF",
-      "text-2": "#FFFFFFBD",
-      "text-3": "#FFFFFF8F",
-      "accent": "#FFFFFFFF",
-      "accent-2": "#FFFFFFFF",
-      "btn": "#FFFFFF00",
-      "btn-hover": "#FFFFFF21",
-      "btn-press": "#FFFFFF38",
-      "play": "#FFFFFFF0",
-      "on-play": "#16161FFF",
-      "play-ring": "#FFFFFF00",
-      "track": "#FFFFFF33",
-      "fill": "#FFFFFFFF",
-      "fill-2": "#FFFFFFFF",
-      "thumb": "#FFFFFFFF",
-      "panel": "#0E0E1652",
-      "panel-border": "#FFFFFF1A",
-      "row-hover": "#FFFFFF14",
-      "row-active": "#FFFFFF26",
-      "viz-a": "#FFFFFFEB",
-      "viz-b": "#FFFFFF47",
-      "glow": "#FFFFFF00",
-      "scrim": "#00000000",
-      "focus": "#FFFFFFBF",
-      "close-hover": "#C42B1CFF"
-    },
-    "radius": {
-      "win": 14,
-      "cover": 18,
-      "btn": 999,
-      "play": 999,
-      "row": 10,
-      "track": 999,
-      "panel": 0,
-      "mini": 14,
-      "mini-cover": 10
-    },
-    "shadow": {
-      "win": [
-        {
-          "x": 0,
-          "y": 24,
-          "blur": 64,
-          "spread": 0,
-          "color": "#00000073",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 2,
-          "blur": 8,
-          "spread": 0,
-          "color": "#00000040",
-          "inset": false
-        }
-      ],
-      "cover": [
-        {
-          "x": 0,
-          "y": 22,
-          "blur": 44,
-          "spread": -10,
-          "color": "#0000008C",
-          "inset": false
-        }
-      ],
-      "play": [
-        {
-          "x": 0,
-          "y": 8,
-          "blur": 22,
-          "spread": 0,
-          "color": "#0000004D",
-          "inset": false
-        }
-      ],
-      "btn-active": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 0,
-          "color": "#00000000",
-          "inset": false
-        }
-      ],
-      "thumb": [
-        {
-          "x": 0,
-          "y": 1,
-          "blur": 4,
-          "spread": 0,
-          "color": "#00000059",
-          "inset": false
-        }
-      ]
-    },
-    "spacing": {
-      "win": 26,
-      "section": 16,
-      "controls": 12,
-      "row": 12
-    },
-    "font": {
-      "fs-title": 21,
-      "fw-title": 600,
-      "ls-title": -0.2,
-      "fs-artist": 14,
-      "fw-artist": 500,
-      "ls-artist": 0,
-      "tt-artist": "none",
-      "fs-album": 12,
-      "fs-time": 12,
-      "fs-row": 14,
-      "fs-row-sub": 12,
-      "fs-caps": 11,
-      "fs-mini-title": 14,
-      "fs-heading": 15
-    },
-    "size": {
-      "win-w": 420,
-      "win-h": 680,
-      "mini-w": 360,
-      "mini-h": 88,
-      "playlist-w": 360,
-      "titlebar": 40,
-      "cover": 292,
-      "art": 292,
-      "btn": 42,
-      "play": 64,
-      "icon": 22,
-      "icon-stroke": 2,
-      "track": 4,
-      "track-hover": 6,
-      "thumb": 12,
-      "viz-h": 40,
-      "row": 54,
-      "mini-cover": 60
-    },
-    "duration": {
-      "fast": 150,
-      "base": 220,
-      "slow": 350,
-      "cover": 350,
-      "text": 260,
-      "bg": 350,
-      "resize": 320,
-      "press": 90,
-      "stagger": 22
-    },
-    "easing": {
-      "out": {
-        "type": "cubic-bezier",
-        "points": [
-          0.22,
-          1,
-          0.36,
-          1
+  "skins": {
+    "glass": {
+      "color": {
+        "win-base": "#14141E8C",
+        "win-border": "#FFFFFF24",
+        "text": "#FFFFFFFF",
+        "text-2": "#FFFFFFBD",
+        "text-3": "#FFFFFF8F",
+        "accent": "#FFFFFFFF",
+        "accent-2": "#FFFFFFFF",
+        "btn": "#FFFFFF00",
+        "btn-hover": "#FFFFFF21",
+        "btn-press": "#FFFFFF38",
+        "play": "var(--c-accent)",
+        "on-play": "#16161FFF",
+        "play-ring": "#FFFFFF00",
+        "track": "#FFFFFF33",
+        "thumb": "#FFFFFFFF",
+        "panel": "#0E0E1652",
+        "panel-border": "#FFFFFF1A",
+        "row-hover": "#FFFFFF14",
+        "row-active": "#FFFFFF26",
+        "row-line": "#FFFFFF00",
+        "scrim": "#00000059",
+        "close-hover": "#C42B1CFF",
+        "title-glow": "#00000000"
+      },
+      "effect": {
+        "tint": 0.42,
+        "blur": 40,
+        "saturate": 1.6,
+        "noise": 0.05,
+        "grid": 0,
+        "cover-ambient": 0.6,
+        "cover-ambient-blur": 36,
+        "cover-sheen": 1,
+        "glow": 0,
+        "thumb-idle": 1,
+        "thumb-hover": 1.45,
+        "dot": 1,
+        "spin": 0,
+        "speed": 1,
+        "text-scale": 1
+      },
+      "radius": {
+        "win": 14,
+        "btn": 999,
+        "play": 999,
+        "row": 10,
+        "track": 999,
+        "panel": 0,
+        "thumb": 999,
+        "dot": 999
+      },
+      "shadow": {
+        "cover": [
+          {
+            "x": 0,
+            "y": 22,
+            "blur": 44,
+            "spread": -10,
+            "color": "#0000008C",
+            "inset": false
+          }
+        ],
+        "play": [
+          {
+            "x": 0,
+            "y": 8,
+            "blur": 22,
+            "spread": 0,
+            "color": "#0000004D",
+            "inset": false
+          }
+        ],
+        "play-hover": [
+          {
+            "x": 0,
+            "y": 10,
+            "blur": 28,
+            "spread": 0,
+            "color": "#00000066",
+            "inset": false
+          }
+        ],
+        "btn-active": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "thumb": [
+          {
+            "x": 0,
+            "y": 1,
+            "blur": 4,
+            "spread": 0,
+            "color": "#00000059",
+            "inset": false
+          }
         ]
       },
-      "in": {
-        "type": "cubic-bezier",
-        "points": [
-          0.4,
-          0,
-          1,
-          1
-        ]
+      "spacing": {
+        "section": 16,
+        "controls": 12,
+        "row": 12
+      },
+      "font": {
+        "fw-title": 600,
+        "ls-title": -0.2,
+        "fs-artist": 14,
+        "fw-artist": 500,
+        "ls-artist": 0,
+        "tt-artist": "none",
+        "fs-album": 12,
+        "fs-time": 12,
+        "fs-row": 14,
+        "fs-row-sub": 12,
+        "fs-caps": 11,
+        "fs-mini-title": 14,
+        "fs-heading": 15,
+        "tt-heading": "none",
+        "ls-heading": 0
+      },
+      "size": {
+        "titlebar": 40,
+        "icon": 22,
+        "icon-stroke": 2,
+        "track": 4,
+        "track-hover": 6,
+        "thumb-w": 12,
+        "thumb-h": 12,
+        "row": 54,
+        "mini-cover": 60,
+        "dot-w": 4,
+        "dot-h": 4
+      },
+      "duration": {
+        "fast": 150,
+        "base": 220,
+        "slow": 350,
+        "cover": 350,
+        "text": 260,
+        "bg": 350,
+        "resize": 320,
+        "press": 90,
+        "stagger": 22,
+        "spring": 428
+      },
+      "easing": {
+        "out": {
+          "type": "cubic-bezier",
+          "points": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        "in": {
+          "type": "cubic-bezier",
+          "points": [
+            0.4,
+            0,
+            1,
+            1
+          ]
+        },
+        "spring": {
+          "type": "sampled",
+          "note": "выборка пружины spring.*, равномерно по времени",
+          "samples": [
+            0,
+            0.0219,
+            0.0793,
+            0.1613,
+            0.2585,
+            0.363,
+            0.4688,
+            0.5711,
+            0.6665,
+            0.7527,
+            0.8283,
+            0.8927,
+            0.9459,
+            0.9885,
+            1.0212,
+            1.0451,
+            1.0613,
+            1.071,
+            1.0754,
+            1.0756,
+            1.0725,
+            1.0672,
+            1.0603,
+            1.0526,
+            1.0446,
+            1.0367,
+            1.0291,
+            1.0222,
+            1.016,
+            1.0106,
+            1.0062,
+            1.0025,
+            0.9996,
+            0.9975,
+            0.9959,
+            0.9949,
+            0.9944,
+            0.9942,
+            0.9943,
+            0.9947,
+            1
+          ]
+        }
       },
       "spring": {
-        "type": "sampled",
-        "note": "выборка пружины spring.*, равномерно по времени",
-        "samples": [
-          0,
-          0.0294,
-          0.1047,
-          0.209,
-          0.3284,
-          0.4521,
-          0.5721,
-          0.6826,
-          0.7801,
-          0.8628,
-          0.9302,
-          0.9828,
-          1.0218,
-          1.0487,
-          1.0654,
-          1.0739,
-          1.0759,
-          1.0731,
-          1.067,
-          1.0589,
-          1.0497,
-          1.0403,
-          1.0313,
-          1.023,
-          1.0158,
-          1.0097,
-          1.0047,
-          1.0008,
-          1
-        ]
+        "stiffness": 420,
+        "damping": 26
+      },
+      "visualizer": {
+        "style": "mirror",
+        "bars": 48,
+        "attack": 18,
+        "fall": 1.5,
+        "glow": 0
+      },
+      "marquee": {
+        "speed": 30,
+        "pause": 1600,
+        "gap": 48
+      },
+      "defaults": {
+        "layout": "classic",
+        "playlist": "side",
+        "cover-shape": "rounded",
+        "backdrop": "acrylic",
+        "shadow": "deep",
+        "desk": "aurora",
+        "motion": "soft",
+        "cover-fx": "zoom",
+        "text-fx": "rise",
+        "btn-fx": "spring",
+        "play-fx": "morph",
+        "viz-color": "accent",
+        "accent-from-cover": 0
       }
     },
-    "spring": {
+    "frost": {
+      "color": {
+        "win-base": "#F6F7FC9E",
+        "win-border": "#FFFFFF8C",
+        "text": "#15161AFF",
+        "text-2": "#15161ABD",
+        "text-3": "#15161A99",
+        "accent": "#2F5BFFFF",
+        "accent-2": "#8A4DFFFF",
+        "btn": "#00000000",
+        "btn-hover": "#0000000F",
+        "btn-press": "#0000001C",
+        "play": "var(--c-accent)",
+        "on-play": "#FFFFFFFF",
+        "play-ring": "#FFFFFF00",
+        "track": "#0000001F",
+        "thumb": "#FFFFFFFF",
+        "panel": "#FAFAFDD1",
+        "panel-border": "#00000014",
+        "row-hover": "#0000000D",
+        "row-active": "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+        "row-line": "#00000000",
+        "scrim": "#FFFFFF59",
+        "close-hover": "#C42B1CFF",
+        "title-glow": "#00000000"
+      },
+      "effect": {
+        "tint": 0.3,
+        "blur": 36,
+        "saturate": 1.8,
+        "noise": 0.04,
+        "grid": 0,
+        "cover-ambient": 0.5,
+        "cover-ambient-blur": 40,
+        "cover-sheen": 0.6,
+        "glow": 0,
+        "thumb-idle": 1,
+        "thumb-hover": 1.35,
+        "dot": 1,
+        "spin": 0,
+        "speed": 0.7,
+        "text-scale": 1
+      },
+      "radius": {
+        "win": 12,
+        "btn": 10,
+        "play": 999,
+        "row": 8,
+        "track": 999,
+        "panel": 16,
+        "thumb": 999,
+        "dot": 999
+      },
+      "shadow": {
+        "cover": [
+          {
+            "x": 0,
+            "y": 18,
+            "blur": 36,
+            "spread": -12,
+            "color": "#1E285A59",
+            "inset": false
+          }
+        ],
+        "play": "0 8px 20px color-mix(in srgb, var(--c-accent) 40%, transparent)",
+        "play-hover": "0 10px 26px color-mix(in srgb, var(--c-accent) 55%, transparent)",
+        "btn-active": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "thumb": [
+          {
+            "x": 0,
+            "y": 1,
+            "blur": 4,
+            "spread": 0,
+            "color": "#0000004D",
+            "inset": false
+          },
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 1,
+            "color": "#00000014",
+            "inset": false
+          }
+        ]
+      },
+      "spacing": {
+        "section": 16,
+        "controls": 12,
+        "row": 12
+      },
+      "font": {
+        "fw-title": 650,
+        "ls-title": -0.3,
+        "fs-artist": 14,
+        "fw-artist": 500,
+        "ls-artist": 0,
+        "tt-artist": "none",
+        "fs-album": 12,
+        "fs-time": 12,
+        "fs-row": 14,
+        "fs-row-sub": 12,
+        "fs-caps": 11,
+        "fs-mini-title": 14,
+        "fs-heading": 15,
+        "tt-heading": "none",
+        "ls-heading": 0
+      },
+      "size": {
+        "titlebar": 40,
+        "icon": 22,
+        "icon-stroke": 1.8,
+        "track": 4,
+        "track-hover": 6,
+        "thumb-w": 14,
+        "thumb-h": 14,
+        "row": 52,
+        "mini-cover": 60,
+        "dot-w": 4,
+        "dot-h": 4
+      },
+      "duration": {
+        "fast": 150,
+        "base": 220,
+        "slow": 350,
+        "cover": 350,
+        "text": 260,
+        "bg": 350,
+        "resize": 320,
+        "press": 90,
+        "stagger": 22,
+        "spring": 188
+      },
+      "easing": {
+        "out": {
+          "type": "cubic-bezier",
+          "points": [
+            0.2,
+            0.9,
+            0.1,
+            1
+          ]
+        },
+        "in": {
+          "type": "cubic-bezier",
+          "points": [
+            0.4,
+            0,
+            1,
+            1
+          ]
+        },
+        "spring": {
+          "type": "sampled",
+          "note": "выборка пружины spring.*, равномерно по времени",
+          "samples": [
+            0,
+            0.0072,
+            0.0268,
+            0.0561,
+            0.0928,
+            0.1349,
+            0.1809,
+            0.2293,
+            0.2791,
+            0.3291,
+            0.3787,
+            0.4274,
+            0.4745,
+            0.5197,
+            0.5629,
+            0.6037,
+            0.6421,
+            0.6779,
+            0.7113,
+            0.7422,
+            0.7707,
+            0.7968,
+            0.8207,
+            0.8424,
+            0.8621,
+            0.8799,
+            0.8958,
+            0.9102,
+            0.923,
+            0.9343,
+            0.9444,
+            0.9533,
+            0.9611,
+            0.9679,
+            0.9739,
+            0.979,
+            0.9835,
+            0.9873,
+            0.9905,
+            0.9933,
+            1
+          ]
+        }
+      },
+      "spring": {
+        "stiffness": 700,
+        "damping": 46
+      },
+      "visualizer": {
+        "style": "bars",
+        "bars": 40,
+        "attack": 20,
+        "fall": 1.8,
+        "glow": 0
+      },
+      "marquee": {
+        "speed": 32,
+        "pause": 1400,
+        "gap": 48
+      },
+      "defaults": {
+        "layout": "classic",
+        "playlist": "sheet",
+        "cover-shape": "rounded",
+        "backdrop": "acrylic",
+        "shadow": "soft",
+        "desk": "aurora",
+        "motion": "snappy",
+        "cover-fx": "blur",
+        "text-fx": "fade",
+        "btn-fx": "press",
+        "play-fx": "rotate",
+        "viz-color": "cover",
+        "accent-from-cover": 0
+      }
+    },
+    "neon": {
+      "color": {
+        "win-base": "#08070FFF",
+        "win-border": "#8C78FF38",
+        "text": "#F5F2FFFF",
+        "text-2": "#E2DCFFC2",
+        "text-3": "#CEC6FF94",
+        "accent": "#2EF2FFFF",
+        "accent-2": "#FF3DBBFF",
+        "btn": "#00000000",
+        "btn-hover": "color-mix(in srgb, var(--c-accent) 10%, transparent)",
+        "btn-press": "color-mix(in srgb, var(--c-accent) 20%, transparent)",
+        "play": "color-mix(in srgb, var(--c-accent) 10%, transparent)",
+        "on-play": "var(--c-accent)",
+        "play-ring": "var(--c-accent)",
+        "track": "#FFFFFF1A",
+        "thumb": "#FFFFFFFF",
+        "panel": "#0D0B1AF7",
+        "panel-border": "color-mix(in srgb, var(--c-accent) 35%, transparent)",
+        "row-hover": "color-mix(in srgb, var(--c-accent) 7%, transparent)",
+        "row-active": "color-mix(in srgb, var(--c-accent-2) 13%, transparent)",
+        "row-line": "#00000000",
+        "scrim": "#04030A99",
+        "close-hover": "#FF3DBBFF",
+        "title-glow": "color-mix(in srgb, var(--c-accent-2) 35%, transparent)"
+      },
+      "effect": {
+        "tint": 0.26,
+        "blur": 0,
+        "saturate": 1,
+        "noise": 0,
+        "grid": 0.06,
+        "cover-ambient": 0.85,
+        "cover-ambient-blur": 48,
+        "cover-sheen": 0,
+        "glow": 0.6,
+        "thumb-idle": 1,
+        "thumb-hover": 1.5,
+        "dot": 0,
+        "spin": 10,
+        "speed": 1,
+        "text-scale": 1
+      },
+      "radius": {
+        "win": 10,
+        "btn": 12,
+        "play": 999,
+        "row": 8,
+        "track": 2,
+        "panel": 18,
+        "thumb": 999,
+        "dot": 999
+      },
+      "shadow": {
+        "cover": "0 0 0 2px rgba(5, 4, 10, 0.9), 0 0 0 3px color-mix(in srgb, var(--c-accent) 45%, transparent)",
+        "play": "0 0 18px var(--c-glow), inset 0 0 12px color-mix(in srgb, var(--c-accent) 35%, transparent)",
+        "play-hover": "0 0 28px color-mix(in srgb, var(--c-accent) 80%, transparent), inset 0 0 16px color-mix(in srgb, var(--c-accent) 50%, transparent)",
+        "btn-active": "0 0 14px color-mix(in srgb, var(--c-accent) 50%, transparent)",
+        "thumb": "0 0 10px color-mix(in srgb, var(--c-accent) 90%, transparent)"
+      },
+      "spacing": {
+        "section": 14,
+        "controls": 10,
+        "row": 12
+      },
+      "font": {
+        "fw-title": 700,
+        "ls-title": 0.2,
+        "fs-artist": 11,
+        "fw-artist": 600,
+        "ls-artist": 2.2,
+        "tt-artist": "uppercase",
+        "fs-album": 12,
+        "fs-time": 12,
+        "fs-row": 14,
+        "fs-row-sub": 11,
+        "fs-caps": 11,
+        "fs-mini-title": 14,
+        "fs-heading": 13,
+        "tt-heading": "uppercase",
+        "ls-heading": 2.4
+      },
+      "size": {
+        "titlebar": 40,
+        "icon": 22,
+        "icon-stroke": 2,
+        "track": 3,
+        "track-hover": 5,
+        "thumb-w": 12,
+        "thumb-h": 12,
+        "row": 52,
+        "mini-cover": 60,
+        "dot-w": 4,
+        "dot-h": 4
+      },
+      "duration": {
+        "fast": 150,
+        "base": 240,
+        "slow": 350,
+        "cover": 350,
+        "text": 240,
+        "bg": 350,
+        "resize": 340,
+        "press": 90,
+        "stagger": 20,
+        "spring": 684
+      },
+      "easing": {
+        "out": {
+          "type": "cubic-bezier",
+          "points": [
+            0.16,
+            1,
+            0.3,
+            1
+          ]
+        },
+        "in": {
+          "type": "cubic-bezier",
+          "points": [
+            0.5,
+            0,
+            0.75,
+            0
+          ]
+        },
+        "spring": {
+          "type": "sampled",
+          "note": "выборка пружины spring.*, равномерно по времени",
+          "samples": [
+            0,
+            0.0403,
+            0.1463,
+            0.2959,
+            0.4681,
+            0.6449,
+            0.8115,
+            0.9573,
+            1.0753,
+            1.1624,
+            1.2183,
+            1.2455,
+            1.2478,
+            1.2305,
+            1.199,
+            1.1588,
+            1.1148,
+            1.0714,
+            1.0316,
+            0.9979,
+            0.9715,
+            0.9529,
+            0.942,
+            0.9378,
+            0.9394,
+            0.9453,
+            0.9542,
+            0.9648,
+            0.9758,
+            0.9863,
+            0.9957,
+            1.0034,
+            1.0092,
+            1.0131,
+            1.0151,
+            1.0155,
+            1.0146,
+            1.0128,
+            1.0104,
+            1.0077,
+            1
+          ]
+        }
+      },
+      "spring": {
+        "stiffness": 300,
+        "damping": 14
+      },
+      "visualizer": {
+        "style": "bars",
+        "bars": 64,
+        "attack": 22,
+        "fall": 1.2,
+        "glow": 12
+      },
+      "marquee": {
+        "speed": 36,
+        "pause": 1400,
+        "gap": 56
+      },
+      "defaults": {
+        "layout": "stage",
+        "playlist": "sheet",
+        "cover-shape": "vinyl",
+        "backdrop": "solid",
+        "shadow": "glow",
+        "desk": "night",
+        "motion": "bouncy",
+        "cover-fx": "rotate",
+        "text-fx": "slide",
+        "btn-fx": "glow",
+        "play-fx": "pulse",
+        "viz-color": "accent",
+        "accent-from-cover": 0
+      }
+    },
+    "sunset": {
+      "color": {
+        "win-base": "#1D1016F0",
+        "win-border": "#FFC8A024",
+        "text": "#FFF4ECFF",
+        "text-2": "#FFECE0C2",
+        "text-3": "#FFE2D299",
+        "accent": "#FFB35CFF",
+        "accent-2": "#FF5F6DFF",
+        "btn": "#00000000",
+        "btn-hover": "#FFC8A01F",
+        "btn-press": "#FFC8A033",
+        "play": "var(--c-accent)",
+        "on-play": "#2A1218FF",
+        "play-ring": "#FFFFFF00",
+        "track": "#FFFFFF29",
+        "thumb": "#FFF4ECFF",
+        "panel": "#1D10168C",
+        "panel-border": "#FFC8A024",
+        "row-hover": "#FFC8A014",
+        "row-active": "color-mix(in srgb, var(--c-accent) 16%, transparent)",
+        "row-line": "#00000000",
+        "scrim": "#0A040680",
+        "close-hover": "#FF5F6DFF",
+        "title-glow": "#00000000"
+      },
+      "effect": {
+        "tint": 0.55,
+        "blur": 50,
+        "saturate": 1.2,
+        "noise": 0.06,
+        "grid": 0,
+        "cover-ambient": 0.7,
+        "cover-ambient-blur": 44,
+        "cover-sheen": 0.4,
+        "glow": 0.2,
+        "thumb-idle": 0,
+        "thumb-hover": 1.3,
+        "dot": 1,
+        "spin": 0,
+        "speed": 1.6,
+        "text-scale": 1
+      },
+      "radius": {
+        "win": 22,
+        "btn": 14,
+        "play": 22,
+        "row": 14,
+        "track": 999,
+        "panel": 22,
+        "thumb": 999,
+        "dot": 999
+      },
+      "shadow": {
+        "cover": [
+          {
+            "x": 0,
+            "y": 26,
+            "blur": 50,
+            "spread": -14,
+            "color": "#00000099",
+            "inset": false
+          }
+        ],
+        "play": "0 10px 30px color-mix(in srgb, var(--c-accent) 45%, transparent)",
+        "play-hover": "0 14px 36px color-mix(in srgb, var(--c-accent) 60%, transparent)",
+        "btn-active": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "thumb": [
+          {
+            "x": 0,
+            "y": 2,
+            "blur": 6,
+            "spread": 0,
+            "color": "#00000066",
+            "inset": false
+          }
+        ]
+      },
+      "spacing": {
+        "section": 14,
+        "controls": 10,
+        "row": 12
+      },
+      "font": {
+        "fw-title": 700,
+        "ls-title": -0.3,
+        "fs-artist": 14,
+        "fw-artist": 500,
+        "ls-artist": 0,
+        "tt-artist": "none",
+        "fs-album": 12,
+        "fs-time": 12,
+        "fs-row": 14,
+        "fs-row-sub": 12,
+        "fs-caps": 11,
+        "fs-mini-title": 14,
+        "fs-heading": 18,
+        "tt-heading": "none",
+        "ls-heading": -0.2
+      },
+      "size": {
+        "titlebar": 40,
+        "icon": 22,
+        "icon-stroke": 2,
+        "track": 5,
+        "track-hover": 7,
+        "thumb-w": 14,
+        "thumb-h": 14,
+        "row": 54,
+        "mini-cover": 60,
+        "dot-w": 4,
+        "dot-h": 4
+      },
+      "duration": {
+        "fast": 150,
+        "base": 220,
+        "slow": 350,
+        "cover": 350,
+        "text": 260,
+        "bg": 350,
+        "resize": 320,
+        "press": 90,
+        "stagger": 22,
+        "spring": 392
+      },
+      "easing": {
+        "out": {
+          "type": "cubic-bezier",
+          "points": [
+            0.33,
+            1,
+            0.68,
+            1
+          ]
+        },
+        "in": {
+          "type": "cubic-bezier",
+          "points": [
+            0.32,
+            0,
+            0.67,
+            0
+          ]
+        },
+        "spring": {
+          "type": "sampled",
+          "note": "выборка пружины spring.*, равномерно по времени",
+          "samples": [
+            0,
+            0.0072,
+            0.0266,
+            0.0558,
+            0.0923,
+            0.1342,
+            0.18,
+            0.2282,
+            0.2778,
+            0.3276,
+            0.3771,
+            0.4256,
+            0.4727,
+            0.5178,
+            0.5609,
+            0.6017,
+            0.6401,
+            0.676,
+            0.7094,
+            0.7403,
+            0.7688,
+            0.795,
+            0.819,
+            0.8408,
+            0.8605,
+            0.8784,
+            0.8944,
+            0.9089,
+            0.9217,
+            0.9332,
+            0.9434,
+            0.9523,
+            0.9602,
+            0.9671,
+            0.9731,
+            0.9784,
+            0.9829,
+            0.9868,
+            0.9901,
+            0.9929,
+            1
+          ]
+        }
+      },
+      "spring": {
+        "stiffness": 160,
+        "damping": 22
+      },
+      "visualizer": {
+        "style": "wave",
+        "bars": 40,
+        "attack": 10,
+        "fall": 1,
+        "glow": 6
+      },
+      "marquee": {
+        "speed": 26,
+        "pause": 2000,
+        "gap": 56
+      },
+      "defaults": {
+        "layout": "horizon",
+        "playlist": "push",
+        "cover-shape": "rounded",
+        "backdrop": "cover",
+        "shadow": "deep",
+        "desk": "dusk",
+        "motion": "slow",
+        "cover-fx": "flip",
+        "text-fx": "blur",
+        "btn-fx": "lift",
+        "play-fx": "pulse",
+        "viz-color": "accent",
+        "accent-from-cover": 1
+      }
+    },
+    "minimal": {
+      "color": {
+        "win-base": "#F4F3EFFF",
+        "win-border": "#00000017",
+        "text": "#121212FF",
+        "text-2": "#4F4F49FF",
+        "text-3": "#6B6B64FF",
+        "accent": "#121212FF",
+        "accent-2": "#121212FF",
+        "btn": "#00000000",
+        "btn-hover": "#0000000E",
+        "btn-press": "#0000001A",
+        "play": "var(--c-accent)",
+        "on-play": "#F4F3EFFF",
+        "play-ring": "#00000000",
+        "track": "#00000021",
+        "thumb": "var(--c-accent)",
+        "panel": "#F4F3EF00",
+        "panel-border": "#0000001A",
+        "row-hover": "#0000000A",
+        "row-active": "#0000000F",
+        "row-line": "#0000001A",
+        "scrim": "#F4F3EF99",
+        "close-hover": "#C42B1CFF",
+        "title-glow": "#00000000"
+      },
+      "effect": {
+        "tint": 0.07,
+        "blur": 0,
+        "saturate": 1,
+        "noise": 0,
+        "grid": 0,
+        "cover-ambient": 0,
+        "cover-ambient-blur": 0,
+        "cover-sheen": 0,
+        "glow": 0,
+        "thumb-idle": 0,
+        "thumb-hover": 1.2,
+        "dot": 1,
+        "spin": 0,
+        "speed": 1,
+        "text-scale": 1
+      },
+      "radius": {
+        "win": 6,
+        "btn": 6,
+        "play": 999,
+        "row": 0,
+        "track": 0,
+        "panel": 0,
+        "thumb": 0,
+        "dot": 0
+      },
+      "shadow": {
+        "cover": [
+          {
+            "x": 0,
+            "y": 1,
+            "blur": 2,
+            "spread": 0,
+            "color": "#0000001F",
+            "inset": false
+          }
+        ],
+        "play": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "play-hover": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "btn-active": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ],
+        "thumb": [
+          {
+            "x": 0,
+            "y": 0,
+            "blur": 0,
+            "spread": 0,
+            "color": "#00000000",
+            "inset": false
+          }
+        ]
+      },
+      "spacing": {
+        "section": 18,
+        "controls": 8,
+        "row": 16
+      },
+      "font": {
+        "fw-title": 600,
+        "ls-title": -0.7,
+        "fs-artist": 15,
+        "fw-artist": 500,
+        "ls-artist": 0,
+        "tt-artist": "none",
+        "fs-album": 13,
+        "fs-time": 12,
+        "fs-row": 15,
+        "fs-row-sub": 12,
+        "fs-caps": 11,
+        "fs-mini-title": 15,
+        "fs-heading": 28,
+        "tt-heading": "none",
+        "ls-heading": -0.6
+      },
+      "size": {
+        "titlebar": 40,
+        "icon": 22,
+        "icon-stroke": 1.6,
+        "track": 2,
+        "track-hover": 4,
+        "thumb-w": 2,
+        "thumb-h": 14,
+        "row": 50,
+        "mini-cover": 64,
+        "dot-w": 12,
+        "dot-h": 2
+      },
+      "duration": {
+        "fast": 160,
+        "base": 240,
+        "slow": 320,
+        "cover": 320,
+        "text": 280,
+        "bg": 350,
+        "resize": 300,
+        "press": 100,
+        "stagger": 18,
+        "spring": 284
+      },
+      "easing": {
+        "out": {
+          "type": "cubic-bezier",
+          "points": [
+            0.25,
+            0.8,
+            0.25,
+            1
+          ]
+        },
+        "in": {
+          "type": "cubic-bezier",
+          "points": [
+            0.4,
+            0,
+            0.6,
+            1
+          ]
+        },
+        "spring": {
+          "type": "sampled",
+          "note": "выборка пружины spring.*, равномерно по времени",
+          "samples": [
+            0,
+            0.007,
+            0.0262,
+            0.055,
+            0.0911,
+            0.1326,
+            0.178,
+            0.2259,
+            0.2751,
+            0.3247,
+            0.374,
+            0.4223,
+            0.4693,
+            0.5144,
+            0.5575,
+            0.5983,
+            0.6368,
+            0.6729,
+            0.7064,
+            0.7376,
+            0.7663,
+            0.7927,
+            0.8168,
+            0.8388,
+            0.8588,
+            0.8769,
+            0.8931,
+            0.9078,
+            0.9208,
+            0.9324,
+            0.9428,
+            0.9519,
+            0.9599,
+            0.9669,
+            0.9731,
+            0.9784,
+            0.983,
+            0.9869,
+            0.9903,
+            0.9931,
+            1
+          ]
+        }
+      },
+      "spring": {
+        "stiffness": 300,
+        "damping": 30
+      },
+      "visualizer": {
+        "style": "lines",
+        "bars": 32,
+        "attack": 14,
+        "fall": 1.8,
+        "glow": 0
+      },
+      "marquee": {
+        "speed": 26,
+        "pause": 2000,
+        "gap": 64
+      },
+      "defaults": {
+        "layout": "editorial",
+        "playlist": "push",
+        "cover-shape": "square",
+        "backdrop": "solid",
+        "shadow": "soft",
+        "desk": "paper",
+        "motion": "calm",
+        "cover-fx": "slide",
+        "text-fx": "wipe",
+        "btn-fx": "press",
+        "play-fx": "morph",
+        "viz-color": "mono",
+        "accent-from-cover": 0
+      }
+    }
+  },
+  "layouts": {
+    "classic": {
+      "size": {
+        "win-w": 420,
+        "win-h": 680,
+        "playlist-w": 360,
+        "cover": 292,
+        "art": 292,
+        "viz-h": 40,
+        "play": 64,
+        "btn": 42
+      },
+      "spacing": {
+        "win": 26
+      },
+      "font": {
+        "fs-title": 21
+      }
+    },
+    "stage": {
+      "size": {
+        "win-w": 420,
+        "win-h": 680,
+        "playlist-w": 380,
+        "cover": 176,
+        "art": 356,
+        "viz-h": 356,
+        "play": 68,
+        "btn": 44
+      },
+      "spacing": {
+        "win": 24
+      },
+      "font": {
+        "fs-title": 22
+      }
+    },
+    "editorial": {
+      "size": {
+        "win-w": 420,
+        "win-h": 680,
+        "playlist-w": 360,
+        "cover": 300,
+        "art": 300,
+        "viz-h": 22,
+        "play": 52,
+        "btn": 40
+      },
+      "spacing": {
+        "win": 36
+      },
+      "font": {
+        "fs-title": 30
+      }
+    },
+    "horizon": {
+      "size": {
+        "win-w": 700,
+        "win-h": 340,
+        "playlist-w": 340,
+        "cover": 248,
+        "art": 248,
+        "viz-h": 34,
+        "play": 52,
+        "btn": 38
+      },
+      "spacing": {
+        "win": 22
+      },
+      "font": {
+        "fs-title": 22
+      }
+    }
+  },
+  "characters": {
+    "soft": {
+      "label": "Мягко",
       "stiffness": 420,
-      "damping": 26
-    },
-    "visualizer": {
-      "bars": 48,
-      "gap": 3,
-      "attack": 18,
-      "fall": 1.5,
-      "glow": 0,
-      "style": "mirror"
-    },
-    "marquee": {
-      "speed": 30,
-      "pause": 1600,
-      "gap": 48
-    }
-  },
-  "neon": {
-    "effect": {
-      "backdrop": "none",
-      "tint": 0.26,
-      "blur": 0,
-      "saturate": 1,
-      "noise": 0,
-      "cover-ambient": 0.85,
-      "cover-ambient-blur": 48,
-      "grid": 0.05,
-      "hover-scale": 1.1,
-      "press-scale": 0.88,
-      "thumb-idle": 1,
-      "thumb-hover": 1.5,
-      "text-shift-x": 16,
-      "text-shift-y": 0,
-      "spin": 10
-    },
-    "color": {
-      "win-base": "#08070FFF",
-      "win-border": "#8C78FF38",
-      "text": "#F5F2FFFF",
-      "text-2": "#E2DCFFC2",
-      "text-3": "#CEC6FF94",
-      "accent": "#2EF2FFFF",
-      "accent-2": "#FF3DBBFF",
-      "btn": "#2EF2FF00",
-      "btn-hover": "#2EF2FF1A",
-      "btn-press": "#2EF2FF33",
-      "play": "#2EF2FF1A",
-      "on-play": "#2EF2FFFF",
-      "play-ring": "#2EF2FFFF",
-      "track": "#FFFFFF1A",
-      "fill": "#2EF2FFFF",
-      "fill-2": "#FF3DBBFF",
-      "thumb": "#FFFFFFFF",
-      "panel": "#0D0B1AF7",
-      "panel-border": "#2EF2FF59",
-      "row-hover": "#2EF2FF12",
-      "row-active": "#FF3DBB21",
-      "viz-a": "#2EF2FFFF",
-      "viz-b": "#FF3DBBFF",
-      "glow": "#2EF2FF99",
-      "scrim": "#04030A99",
-      "focus": "#2EF2FFFF",
-      "close-hover": "#FF3DBBFF"
-    },
-    "radius": {
-      "win": 10,
-      "cover": 999,
-      "btn": 12,
-      "play": 999,
-      "row": 8,
-      "track": 2,
-      "panel": 18,
-      "mini": 10,
-      "mini-cover": 999
-    },
-    "shadow": {
-      "win": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 1,
-          "color": "#2EF2FF14",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 60,
-          "spread": 0,
-          "color": "#2EF2FF1A",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 24,
-          "blur": 48,
-          "spread": 0,
-          "color": "#00000080",
-          "inset": false
-        }
-      ],
-      "cover": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 2,
-          "color": "#05040AE6",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 3,
-          "color": "#2EF2FF73",
-          "inset": false
-        }
-      ],
-      "play": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 18,
-          "spread": 0,
-          "color": "#2EF2FF8C",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 12,
-          "spread": 0,
-          "color": "#2EF2FF59",
-          "inset": true
-        }
-      ],
-      "btn-active": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 14,
-          "spread": 0,
-          "color": "#2EF2FF80",
-          "inset": false
-        }
-      ],
-      "thumb": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 10,
-          "spread": 0,
-          "color": "#2EF2FFE6",
-          "inset": false
-        }
+      "damping": 26,
+      "speed": 1,
+      "ease": [
+        0.22,
+        1,
+        0.36,
+        1
       ]
     },
-    "spacing": {
-      "win": 24,
-      "section": 14,
-      "controls": 10,
-      "row": 12
-    },
-    "font": {
-      "fs-title": 22,
-      "fw-title": 700,
-      "ls-title": 0.2,
-      "fs-artist": 11,
-      "fw-artist": 600,
-      "ls-artist": 2.2,
-      "tt-artist": "uppercase",
-      "fs-album": 12,
-      "fs-time": 12,
-      "fs-row": 14,
-      "fs-row-sub": 11,
-      "fs-caps": 11,
-      "fs-mini-title": 14,
-      "fs-heading": 13
-    },
-    "size": {
-      "win-w": 420,
-      "win-h": 680,
-      "mini-w": 360,
-      "mini-h": 88,
-      "playlist-w": 420,
-      "titlebar": 40,
-      "cover": 176,
-      "art": 356,
-      "btn": 44,
-      "play": 68,
-      "icon": 22,
-      "icon-stroke": 2,
-      "track": 3,
-      "track-hover": 5,
-      "thumb": 12,
-      "viz-h": 356,
-      "row": 52,
-      "mini-cover": 60
-    },
-    "duration": {
-      "fast": 150,
-      "base": 240,
-      "slow": 350,
-      "cover": 350,
-      "text": 240,
-      "bg": 350,
-      "resize": 340,
-      "press": 90,
-      "stagger": 20
-    },
-    "easing": {
-      "out": {
-        "type": "cubic-bezier",
-        "points": [
-          0.16,
-          1,
-          0.3,
-          1
-        ]
-      },
-      "in": {
-        "type": "cubic-bezier",
-        "points": [
-          0.5,
-          0,
-          0.75,
-          0
-        ]
-      },
-      "spring": {
-        "type": "sampled",
-        "note": "выборка пружины spring.*, равномерно по времени",
-        "samples": [
-          0,
-          0.0272,
-          0.0993,
-          0.2025,
-          0.3246,
-          0.4549,
-          0.585,
-          0.7079,
-          0.819,
-          0.9149,
-          0.9941,
-          1.056,
-          1.1013,
-          1.1314,
-          1.1479,
-          1.153,
-          1.149,
-          1.1381,
-          1.1223,
-          1.1037,
-          1.0838,
-          1.0639,
-          1.045,
-          1.028,
-          1.0133,
-          1.0011,
-          0.9916,
-          0.9846,
-          1
-        ]
-      }
-    },
-    "spring": {
-      "stiffness": 380,
-      "damping": 20
-    },
-    "visualizer": {
-      "bars": 64,
-      "gap": 0,
-      "attack": 22,
-      "fall": 1.2,
-      "glow": 12,
-      "style": "radial"
-    },
-    "marquee": {
-      "speed": 36,
-      "pause": 1400,
-      "gap": 56
-    }
-  },
-  "minimal": {
-    "effect": {
-      "backdrop": "none",
-      "tint": 0.07,
-      "blur": 0,
-      "saturate": 1,
-      "noise": 0,
-      "cover-ambient": 0,
-      "cover-ambient-blur": 0,
-      "grid": 0,
-      "hover-scale": 1,
-      "press-scale": 0.95,
-      "thumb-idle": 0,
-      "thumb-hover": 1.2,
-      "text-shift-x": 0,
-      "text-shift-y": 18,
-      "spin": 0
-    },
-    "color": {
-      "win-base": "#F4F3EFFF",
-      "win-border": "#00000017",
-      "text": "#121212FF",
-      "text-2": "#4F4F49FF",
-      "text-3": "#6B6B64FF",
-      "accent": "#121212FF",
-      "accent-2": "#121212FF",
-      "btn": "#00000000",
-      "btn-hover": "#0000000E",
-      "btn-press": "#0000001A",
-      "play": "#121212FF",
-      "on-play": "#F4F3EFFF",
-      "play-ring": "#00000000",
-      "track": "#00000021",
-      "fill": "#121212FF",
-      "fill-2": "#121212FF",
-      "thumb": "#121212FF",
-      "panel": "#F4F3EF00",
-      "panel-border": "#0000001A",
-      "row-hover": "#0000000A",
-      "row-active": "#00000012",
-      "viz-a": "#121212D9",
-      "viz-b": "#121212D9",
-      "glow": "#00000000",
-      "scrim": "#00000000",
-      "focus": "#121212FF",
-      "close-hover": "#C42B1CFF"
-    },
-    "radius": {
-      "win": 6,
-      "cover": 2,
-      "btn": 6,
-      "play": 999,
-      "row": 0,
-      "track": 0,
-      "panel": 0,
-      "mini": 6,
-      "mini-cover": 2
-    },
-    "shadow": {
-      "win": [
-        {
-          "x": 0,
-          "y": 30,
-          "blur": 60,
-          "spread": 0,
-          "color": "#00000029",
-          "inset": false
-        },
-        {
-          "x": 0,
-          "y": 1,
-          "blur": 3,
-          "spread": 0,
-          "color": "#00000014",
-          "inset": false
-        }
-      ],
-      "cover": [
-        {
-          "x": 0,
-          "y": 1,
-          "blur": 2,
-          "spread": 0,
-          "color": "#0000001F",
-          "inset": false
-        }
-      ],
-      "play": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 0,
-          "color": "#00000000",
-          "inset": false
-        }
-      ],
-      "btn-active": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 0,
-          "color": "#00000000",
-          "inset": false
-        }
-      ],
-      "thumb": [
-        {
-          "x": 0,
-          "y": 0,
-          "blur": 0,
-          "spread": 0,
-          "color": "#00000000",
-          "inset": false
-        }
-      ]
-    },
-    "spacing": {
-      "win": 36,
-      "section": 18,
-      "controls": 8,
-      "row": 16
-    },
-    "font": {
-      "fs-title": 30,
-      "fw-title": 600,
-      "ls-title": -0.7,
-      "fs-artist": 15,
-      "fw-artist": 500,
-      "ls-artist": 0,
-      "tt-artist": "none",
-      "fs-album": 13,
-      "fs-time": 12,
-      "fs-row": 15,
-      "fs-row-sub": 12,
-      "fs-caps": 11,
-      "fs-mini-title": 15,
-      "fs-heading": 28
-    },
-    "size": {
-      "win-w": 420,
-      "win-h": 680,
-      "mini-w": 360,
-      "mini-h": 88,
-      "playlist-w": 420,
-      "titlebar": 40,
-      "cover": 300,
-      "art": 300,
-      "btn": 40,
-      "play": 52,
-      "icon": 22,
-      "icon-stroke": 1.6,
-      "track": 2,
-      "track-hover": 4,
-      "thumb": 10,
-      "viz-h": 22,
-      "row": 50,
-      "mini-cover": 64
-    },
-    "duration": {
-      "fast": 160,
-      "base": 240,
-      "slow": 320,
-      "cover": 320,
-      "text": 280,
-      "bg": 350,
-      "resize": 300,
-      "press": 100,
-      "stagger": 18
-    },
-    "easing": {
-      "out": {
-        "type": "cubic-bezier",
-        "points": [
-          0.25,
-          0.8,
-          0.25,
-          1
-        ]
-      },
-      "in": {
-        "type": "cubic-bezier",
-        "points": [
-          0.4,
-          0,
-          0.6,
-          1
-        ]
-      },
-      "spring": {
-        "type": "sampled",
-        "note": "выборка пружины spring.*, равномерно по времени",
-        "samples": [
-          0,
-          0.0233,
-          0.0817,
-          0.161,
-          0.2509,
-          0.344,
-          0.435,
-          0.5208,
-          0.5993,
-          0.6694,
-          0.7309,
-          0.7839,
-          0.8289,
-          0.8665,
-          0.8976,
-          0.9229,
-          0.9432,
-          0.9593,
-          0.9719,
-          0.9816,
-          0.9889,
-          0.9942,
-          0.9981,
-          1.0008,
-          1
-        ]
-      }
-    },
-    "spring": {
+    "bouncy": {
+      "label": "Пружина",
       "stiffness": 300,
-      "damping": 30
+      "damping": 14,
+      "speed": 1,
+      "ease": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
     },
-    "visualizer": {
-      "bars": 32,
-      "gap": 6,
-      "attack": 14,
-      "fall": 1.8,
-      "glow": 0,
-      "style": "lines"
+    "calm": {
+      "label": "Спокойно",
+      "stiffness": 300,
+      "damping": 30,
+      "speed": 1,
+      "ease": [
+        0.25,
+        0.8,
+        0.25,
+        1
+      ]
     },
-    "marquee": {
-      "speed": 26,
-      "pause": 2000,
-      "gap": 64
+    "snappy": {
+      "label": "Резко",
+      "stiffness": 700,
+      "damping": 46,
+      "speed": 0.7,
+      "ease": [
+        0.2,
+        0.9,
+        0.1,
+        1
+      ]
+    },
+    "slow": {
+      "label": "Медленно",
+      "stiffness": 160,
+      "damping": 22,
+      "speed": 1.6,
+      "ease": [
+        0.33,
+        1,
+        0.68,
+        1
+      ]
+    },
+    "none": {
+      "label": "Без анимаций",
+      "stiffness": 700,
+      "damping": 60,
+      "speed": 0,
+      "ease": [
+        0,
+        0,
+        1,
+        1
+      ]
     }
+  },
+  "settings": [
+    {
+      "tab": "look",
+      "key": "skin",
+      "type": "skins",
+      "label": "Пресет",
+      "hint": "Пресет задаёт все настройки ниже, их можно менять поверх."
+    },
+    {
+      "tab": "look",
+      "key": "layout",
+      "type": "seg",
+      "label": "Окно",
+      "src": "--opt-layout",
+      "struct": true,
+      "options": [
+        [
+          "classic",
+          "Классика"
+        ],
+        [
+          "stage",
+          "Сцена"
+        ],
+        [
+          "editorial",
+          "Журнал"
+        ],
+        [
+          "horizon",
+          "Горизонт"
+        ]
+      ]
+    },
+    {
+      "tab": "look",
+      "key": "playlist",
+      "type": "seg",
+      "label": "Плейлист",
+      "src": "--opt-playlist",
+      "struct": true,
+      "options": [
+        [
+          "side",
+          "Сбоку"
+        ],
+        [
+          "sheet",
+          "Шторка"
+        ],
+        [
+          "push",
+          "Страница"
+        ]
+      ]
+    },
+    {
+      "tab": "look",
+      "key": "coverShape",
+      "type": "seg",
+      "label": "Обложка",
+      "src": "--opt-cover-shape",
+      "options": [
+        [
+          "square",
+          "Квадрат"
+        ],
+        [
+          "rounded",
+          "Скруглённая"
+        ],
+        [
+          "circle",
+          "Круг"
+        ],
+        [
+          "vinyl",
+          "Пластинка"
+        ]
+      ]
+    },
+    {
+      "tab": "look",
+      "key": "spin",
+      "type": "range",
+      "label": "Вращение пластинки",
+      "src": "--fx-spin",
+      "min": 0,
+      "max": 60,
+      "step": 1,
+      "unit": " град/с"
+    },
+    {
+      "tab": "look",
+      "key": "accent",
+      "type": "color",
+      "label": "Акцент",
+      "src": "--c-accent"
+    },
+    {
+      "tab": "look",
+      "key": "accent2",
+      "type": "color",
+      "label": "Второй акцент",
+      "src": "--c-accent-2"
+    },
+    {
+      "tab": "look",
+      "key": "accentFromCover",
+      "type": "toggle",
+      "label": "Акцент из обложки",
+      "src": "--opt-accent-from-cover"
+    },
+    {
+      "tab": "look",
+      "key": "text",
+      "type": "color",
+      "label": "Текст",
+      "src": "--c-text"
+    },
+    {
+      "tab": "look",
+      "key": "textScale",
+      "type": "range",
+      "label": "Размер текста",
+      "src": "--fx-text-scale",
+      "min": 0.85,
+      "max": 1.25,
+      "step": 0.05,
+      "unit": "x"
+    },
+    {
+      "tab": "look",
+      "key": "titleWeight",
+      "type": "range",
+      "label": "Жирность названия",
+      "src": "--fw-title",
+      "min": 300,
+      "max": 800,
+      "step": 50
+    },
+    {
+      "tab": "look",
+      "key": "mqSpeed",
+      "type": "range",
+      "label": "Скорость бегущей строки",
+      "src": "--mq-speed",
+      "min": 10,
+      "max": 80,
+      "step": 2,
+      "unit": " px/с"
+    },
+    {
+      "tab": "env",
+      "key": "backdrop",
+      "type": "seg",
+      "label": "Материал",
+      "src": "--opt-backdrop",
+      "options": [
+        [
+          "acrylic",
+          "Акрил"
+        ],
+        [
+          "solid",
+          "Сплошной"
+        ],
+        [
+          "cover",
+          "Цвета обложки"
+        ],
+        [
+          "coverblur",
+          "Размытая обложка"
+        ]
+      ]
+    },
+    {
+      "tab": "env",
+      "key": "winColor",
+      "type": "color",
+      "label": "Цвет фона",
+      "src": "--c-win-base"
+    },
+    {
+      "tab": "env",
+      "key": "winDensity",
+      "type": "range",
+      "label": "Плотность",
+      "src": "--c-win-base",
+      "min": 0.15,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "tab": "env",
+      "key": "tint",
+      "type": "range",
+      "label": "Оттенок обложки",
+      "src": "--fx-tint",
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "tab": "env",
+      "key": "blur",
+      "type": "range",
+      "label": "Размытие",
+      "src": "--fx-blur",
+      "min": 0,
+      "max": 80,
+      "step": 1,
+      "unit": " px"
+    },
+    {
+      "tab": "env",
+      "key": "noise",
+      "type": "range",
+      "label": "Зерно",
+      "src": "--fx-noise",
+      "min": 0,
+      "max": 0.15,
+      "step": 0.005
+    },
+    {
+      "tab": "env",
+      "key": "grid",
+      "type": "range",
+      "label": "Сетка",
+      "src": "--fx-grid",
+      "min": 0,
+      "max": 0.2,
+      "step": 0.005
+    },
+    {
+      "tab": "env",
+      "key": "radius",
+      "type": "range",
+      "label": "Скругление углов",
+      "src": "--r-win",
+      "min": 0,
+      "max": 28,
+      "step": 1,
+      "unit": " px"
+    },
+    {
+      "tab": "env",
+      "key": "shadow",
+      "type": "seg",
+      "label": "Тень",
+      "src": "--opt-shadow",
+      "options": [
+        [
+          "none",
+          "Нет"
+        ],
+        [
+          "soft",
+          "Мягкая"
+        ],
+        [
+          "deep",
+          "Глубокая"
+        ],
+        [
+          "glow",
+          "Свечение"
+        ]
+      ]
+    },
+    {
+      "tab": "env",
+      "key": "ambient",
+      "type": "range",
+      "label": "Подсветка под обложкой",
+      "src": "--fx-cover-ambient",
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "tab": "env",
+      "key": "glow",
+      "type": "range",
+      "label": "Неоновое свечение",
+      "src": "--fx-glow",
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "tab": "env",
+      "key": "desk",
+      "type": "seg",
+      "label": "Фон под окном",
+      "src": "--opt-desk",
+      "options": [
+        [
+          "aurora",
+          "Аврора"
+        ],
+        [
+          "night",
+          "Ночь"
+        ],
+        [
+          "dusk",
+          "Закат"
+        ],
+        [
+          "paper",
+          "Бумага"
+        ],
+        [
+          "custom",
+          "Свой цвет"
+        ]
+      ]
+    },
+    {
+      "tab": "env",
+      "key": "deskColor",
+      "type": "color",
+      "label": "Свой цвет",
+      "default": "#2b2d42"
+    },
+    {
+      "tab": "motion",
+      "key": "motion",
+      "type": "seg",
+      "label": "Движение",
+      "src": "--opt-motion",
+      "options": [
+        [
+          "soft",
+          "Мягко"
+        ],
+        [
+          "bouncy",
+          "Пружина"
+        ],
+        [
+          "calm",
+          "Спокойно"
+        ],
+        [
+          "snappy",
+          "Резко"
+        ],
+        [
+          "slow",
+          "Медленно"
+        ],
+        [
+          "none",
+          "Без анимаций"
+        ]
+      ]
+    },
+    {
+      "tab": "motion",
+      "key": "speed",
+      "type": "range",
+      "label": "Длительность анимаций",
+      "src": "--fx-speed",
+      "min": 0.5,
+      "max": 2,
+      "step": 0.05,
+      "unit": "x"
+    },
+    {
+      "tab": "motion",
+      "key": "stiffness",
+      "type": "range",
+      "label": "Жёсткость пружины",
+      "src": "--spring-stiffness",
+      "min": 80,
+      "max": 900,
+      "step": 10
+    },
+    {
+      "tab": "motion",
+      "key": "damping",
+      "type": "range",
+      "label": "Затухание пружины",
+      "src": "--spring-damping",
+      "min": 4,
+      "max": 60,
+      "step": 1
+    },
+    {
+      "tab": "motion",
+      "key": "coverFx",
+      "type": "seg",
+      "label": "Обложка",
+      "src": "--opt-cover-fx",
+      "options": [
+        [
+          "fade",
+          "Затухание"
+        ],
+        [
+          "slide",
+          "Сдвиг"
+        ],
+        [
+          "zoom",
+          "Наплыв"
+        ],
+        [
+          "rotate",
+          "Поворот"
+        ],
+        [
+          "flip",
+          "Переворот"
+        ],
+        [
+          "wipe",
+          "Шторка"
+        ],
+        [
+          "blur",
+          "Размытие"
+        ]
+      ]
+    },
+    {
+      "tab": "motion",
+      "key": "textFx",
+      "type": "seg",
+      "label": "Текст",
+      "src": "--opt-text-fx",
+      "options": [
+        [
+          "rise",
+          "Подъём"
+        ],
+        [
+          "slide",
+          "Вбок"
+        ],
+        [
+          "fade",
+          "Затухание"
+        ],
+        [
+          "blur",
+          "Размытие"
+        ],
+        [
+          "wipe",
+          "Шторка"
+        ]
+      ]
+    },
+    {
+      "tab": "motion",
+      "key": "btnFx",
+      "type": "seg",
+      "label": "Реакция",
+      "src": "--opt-btn-fx",
+      "options": [
+        [
+          "spring",
+          "Пружина"
+        ],
+        [
+          "press",
+          "Нажатие"
+        ],
+        [
+          "lift",
+          "Подъём"
+        ],
+        [
+          "glow",
+          "Свечение"
+        ],
+        [
+          "none",
+          "Нет"
+        ]
+      ]
+    },
+    {
+      "tab": "motion",
+      "key": "playFx",
+      "type": "seg",
+      "label": "Пуск и пауза",
+      "src": "--opt-play-fx",
+      "options": [
+        [
+          "morph",
+          "Морфинг"
+        ],
+        [
+          "rotate",
+          "Поворот"
+        ],
+        [
+          "pulse",
+          "Пульс"
+        ]
+      ]
+    },
+    {
+      "tab": "sound",
+      "key": "rate",
+      "type": "seg",
+      "label": "Скорость",
+      "theme": false,
+      "default": "1",
+      "options": [
+        [
+          "0.5",
+          "0.5x"
+        ],
+        [
+          "0.75",
+          "0.75x"
+        ],
+        [
+          "1",
+          "1x"
+        ],
+        [
+          "1.25",
+          "1.25x"
+        ],
+        [
+          "1.5",
+          "1.5x"
+        ],
+        [
+          "2",
+          "2x"
+        ]
+      ]
+    },
+    {
+      "tab": "sound",
+      "key": "crossfade",
+      "type": "range",
+      "label": "Кроссфейд между треками",
+      "theme": false,
+      "default": 0,
+      "min": 0,
+      "max": 12,
+      "step": 0.5,
+      "unit": " с",
+      "hint": "Следующий трек начинается раньше конца текущего; обложка и фон перетекают всё это время. Зона видна на прогрессе."
+    },
+    {
+      "tab": "sound",
+      "key": "fade",
+      "type": "range",
+      "label": "Плавный старт и пауза",
+      "theme": false,
+      "default": 0,
+      "min": 0,
+      "max": 1500,
+      "step": 50,
+      "unit": " мс"
+    },
+    {
+      "tab": "sound",
+      "key": "stopAfter",
+      "type": "toggle",
+      "label": "Остановить после текущего",
+      "theme": false,
+      "default": false
+    },
+    {
+      "tab": "sound",
+      "key": "vizStyle",
+      "type": "seg",
+      "label": "Вид",
+      "src": "--viz-style",
+      "options": [
+        [
+          "bars",
+          "Столбцы"
+        ],
+        [
+          "mirror",
+          "Зеркало"
+        ],
+        [
+          "lines",
+          "Линии"
+        ],
+        [
+          "wave",
+          "Волна"
+        ],
+        [
+          "dots",
+          "Точки"
+        ],
+        [
+          "led",
+          "Сегменты"
+        ],
+        [
+          "off",
+          "Нет"
+        ]
+      ]
+    },
+    {
+      "tab": "sound",
+      "key": "vizColor",
+      "type": "seg",
+      "label": "Цвет",
+      "src": "--opt-viz-color",
+      "options": [
+        [
+          "accent",
+          "Акцент"
+        ],
+        [
+          "cover",
+          "Обложка"
+        ],
+        [
+          "mono",
+          "Цвет текста"
+        ]
+      ]
+    },
+    {
+      "tab": "sound",
+      "key": "vizBars",
+      "type": "range",
+      "label": "Полос",
+      "src": "--viz-bars",
+      "min": 16,
+      "max": 96,
+      "step": 4
+    },
+    {
+      "tab": "sound",
+      "key": "vizAttack",
+      "type": "range",
+      "label": "Отклик",
+      "src": "--viz-attack",
+      "min": 4,
+      "max": 40,
+      "step": 1
+    },
+    {
+      "tab": "sound",
+      "key": "vizFall",
+      "type": "range",
+      "label": "Спад",
+      "src": "--viz-fall",
+      "min": 0.3,
+      "max": 4,
+      "step": 0.1
+    },
+    {
+      "tab": "sound",
+      "key": "vizGlow",
+      "type": "range",
+      "label": "Свечение полос",
+      "src": "--viz-glow",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "unit": " px"
+    }
+  ],
+  "file": {
+    "format": "playermoon-theme",
+    "version": 1
   }
 }

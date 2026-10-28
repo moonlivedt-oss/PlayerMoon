@@ -1,6 +1,10 @@
-// Генерирует mockup/theme.json из блока переменных в mockup/index.html
-// (между комментариями theme:begin и theme:end). Запуск: node tools/theme-from-css.js
+// Генерирует mockup/theme.json из mockup/index.html:
+//   skins    - блоки материалов (theme:begin..theme:end, :root[data-skin=...])
+//   layouts  - блоки раскладок (:root[data-layout=...])
+//   settings - схема настроек из <script id="pm-schema"> (вкладки, опции, диапазоны)
+// Запуск: node tools/theme-from-css.js
 // Цвета приводятся к #RRGGBBAA, px и ms - к числам, тени и кривые - к структурам.
+// Значения с var()/color-mix() остаются строками: они зависят от акцента.
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +15,7 @@ const block = html.slice(html.indexOf('/* theme:begin */'), html.indexOf('/* the
 const GROUPS = {
   c: 'color', r: 'radius', sh: 'shadow', sp: 'spacing', fs: 'font', fw: 'font', ls: 'font', tt: 'font',
   sz: 'size', dur: 'duration', ease: 'easing', spring: 'spring', fx: 'effect', viz: 'visualizer', mq: 'marquee',
+  opt: 'defaults',
 };
 
 const hex2 = (n) => Math.round(n).toString(16).padStart(2, '0').toUpperCase();
@@ -47,6 +52,7 @@ function shadows(v) {
   });
 }
 function value(group, v) {
+  if (/var\(|color-mix\(/.test(v)) return v;
   if (group === 'shadow') return shadows(v);
   if (group === 'easing') {
     let m = v.match(/^cubic-bezier\(([^)]+)\)$/);
@@ -61,18 +67,25 @@ function value(group, v) {
   return v;
 }
 
+const schema = JSON.parse(html.match(/<script type="application\/json" id="pm-schema">([\s\S]*?)<\/script>/)[1]);
 const theme = {
   _info: {
-    source: 'mockup/index.html, блок theme:begin..theme:end',
+    source: 'mockup/index.html: блоки theme:begin..theme:end и схема pm-schema',
     units: 'размеры в px (DIP при 100%), длительности в мс, цвета #RRGGBBAA',
     font: ['Segoe UI Variable Text', 'Segoe UI Variable Display', 'Segoe UI'],
+    compose: 'итоговая тема = skins[skin] + layouts[layout] + пользовательские settings поверх',
   },
+  skins: {},
+  layouts: {},
+  characters: schema.characters,
+  settings: schema.sections.flatMap((sec) => sec.items
+    .filter((it) => !['curve', 'action', 'themes'].includes(it.type))
+    .map((it) => ({ tab: sec.tab, ...it }))),
+  file: { format: schema.format, version: schema.version },
 };
-const re = /:root\[data-variant="(\w+)"\]\s*\{([^}]*)\}/g;
-let m;
-while ((m = re.exec(block))) {
+function parseBlock(body) {
   const out = {};
-  for (const line of m[2].split(';')) {
+  for (const line of body.split(';')) {
     const mm = line.trim().match(/^--([a-z]+)-([\w-]+):\s*(.+)$/s);
     if (!mm) continue;
     const group = GROUPS[mm[1]];
@@ -80,7 +93,10 @@ while ((m = re.exec(block))) {
     const key = group === 'font' ? mm[1] + '-' + mm[2] : mm[2];
     (out[group] ||= {})[key] = value(group, mm[3].trim().replace(/\s+/g, ' '));
   }
-  theme[m[1]] = out;
+  return out;
 }
+const re = /:root\[data-(skin|layout)="(\w+)"\]\s*\{([^}]*)\}/g;
+let m;
+while ((m = re.exec(block))) theme[m[1] + 's'][m[2]] = parseBlock(m[3]);
 fs.writeFileSync(path.join(dir, 'theme.json'), JSON.stringify(theme, null, 2) + '\n');
-console.log('theme.json:', Object.keys(theme).filter((k) => k[0] !== '_').join(', '));
+console.log('theme.json: skins', Object.keys(theme.skins).join(', '), '| layouts', Object.keys(theme.layouts).join(', '), '| settings', theme.settings.length);
