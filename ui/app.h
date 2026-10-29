@@ -25,6 +25,7 @@
 #include "ui/icons.h"
 #include "ui/painter.h"
 #include "ui/renderer.h"
+#include "ui/smtc.h"
 #include "ui/taskbar.h"
 #include "ui/text.h"
 #include "view/player_view.h"
@@ -133,6 +134,7 @@ private:
     CoverCache covers_;
     Painter painter_;
     Taskbar taskbar_;
+    Smtc smtc_;
 
     pm::SpectrumAnalyzer analyzer_{2048};
     std::vector<float> pcm_, spectrum_;

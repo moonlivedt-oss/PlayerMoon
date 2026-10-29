@@ -26,6 +26,7 @@ constexpr UINT kWakeMessage = WM_APP + 1;     // аудиопоток: есть 
 constexpr UINT kLibraryMessage = WM_APP + 2;  // сканер библиотеки закончил
 constexpr UINT kWatchMessage = WM_APP + 3;    // в папках библиотеки что-то поменялось
 constexpr UINT kPluginMessage = WM_APP + 4;   // плагин передал работу в поток окна (host->post)
+constexpr UINT kSmtcMessage = WM_APP + 5;     // кнопка или перемотка из системной медиапанели
 constexpr ULONG_PTR kCopyDataPaths = 0x504D;  // WM_COPYDATA: пути от второго экземпляра
 constexpr UINT_PTR kTickTimer = 1;            // раз в секунду: время в мини-режиме и на панели задач
 constexpr UINT_PTR kSaveTimer = 2;            // отложенное сохранение после изменений
@@ -213,6 +214,9 @@ int App::Run(HINSTANCE instance, int show) {
 
     ShowWindow(hwnd_, show);
     RegisterMediaKeys();
+    smtc_.Attach(hwnd_, kSmtcMessage);
+    if (const pm::NowPlaying& np = player_.Current(); np.index >= 0)  // трек из state.json - сразу в панель
+        smtc_.SetTrack(np.title, np.tags.artist, np.tags.album, np.tags.track, np.tags.cover);
     if (silent) {
         const std::wstring msg = L"Не удалось открыть звуковое устройство, звук выключен.\n" + ::text::Utf8ToWide(error);
         MessageBoxW(hwnd_, msg.c_str(), L"PlayerMoon", MB_ICONWARNING);
@@ -223,6 +227,7 @@ int App::Run(HINSTANCE instance, int show) {
     scanner_.Stop();
     plugins_.UnloadAll();
     taskbar_.Detach();
+    smtc_.Detach();
     player_.Shutdown();
     renderer_.Shutdown();
     return 0;
@@ -459,6 +464,8 @@ void App::OnTrackChanged(int index, int direction) {
     for (const view::CoverSlot& c : view_.covers) keep.push_back(c.serial);
     covers_.Keep(keep);
     RebuildRows();  // длительность трека уточнилась после открытия декодера
+    if (index >= 0) smtc_.SetTrack(np.title, np.tags.artist, np.tags.album, np.tags.track, np.tags.cover);
+    else smtc_.ClearTrack();
     if (index >= 0 && started_) library_.NotePlayed(np.path, static_cast<int64_t>(time(nullptr)));
     NotifyPluginsTrack();
     MarkDirty();
@@ -934,6 +941,7 @@ void App::RenderFrame() {
     else
         KillTimer(hwnd_, kLazyTimer);
     taskbar_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
+    smtc_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
     if (lastPlaying_ != (ps.playing ? 1 : 0)) {
         if (lastPlaying_ >= 0) plugins_.NotifyPlayState(ps.playing);
         lastPlaying_ = ps.playing ? 1 : 0;
@@ -1148,6 +1156,18 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
                 KillTimer(hwnd_, kLazyTimer);
                 Invalidate();
             }
+            return 0;
+        case kSmtcMessage:
+            switch (wp) {
+                case Smtc::kPlay: player_.Play(); break;
+                case Smtc::kPause:
+                case Smtc::kStop: player_.Pause(); break;
+                case Smtc::kNext: Next(); break;
+                case Smtc::kPrevious: Prev(); break;
+                case Smtc::kSeek: Seek(static_cast<double>(lp) / 1000.0); break;
+                default: break;
+            }
+            Invalidate();
             return 0;
         case kPluginMessage:
             plugins_.RunPosted();

@@ -168,7 +168,8 @@ if(WIN32)
     file(GLOB PM_UI_SOURCES CONFIGURE_DEPENDS ui/*.cpp)
     add_executable(PlayerMoon WIN32 ${PM_UI_SOURCES} ui/res/app.rc)
     target_link_libraries(PlayerMoon PRIVATE pm_view pm_theme pm_core pm_motion
-        d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme advapi32 gdi32)
+        d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme advapi32 gdi32
+        runtimeobject shcore)
     add_dependencies(PlayerMoon pm_plugin_history pm_plugin_downloader)
     target_compile_options(PlayerMoon PRIVATE ${PM_WARNINGS})
     target_link_options(PlayerMoon PRIVATE -municode)
