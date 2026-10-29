@@ -68,7 +68,7 @@ add_custom_target(pm_assets DEPENDS ${PM_GEN_DIR}/builtin_assets.h)
 add_library(pm_core STATIC
     core/json.cpp core/playlist.cpp core/tags.cpp core/fft.cpp core/state.cpp
     core/decoder.cpp core/decoder_mf.cpp core/engine.cpp core/player.cpp core/text.cpp core/library.cpp
-    core/plugins.cpp)
+    core/plugins.cpp core/lyrics.cpp)
 target_include_directories(pm_core PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_core PUBLIC pm_miniaudio)
 if(WIN32)
@@ -89,7 +89,7 @@ add_dependencies(pm_theme pm_assets)
 
 # Состояние интерфейса без Win32: раскладки, виджеты, переходы режимов (проверяется тестами)
 add_library(pm_view STATIC view/layout.cpp view/motion_params.cpp view/widgets.cpp view/marquee.cpp view/svg_arc.cpp
-    view/visualizer.cpp view/player_view.cpp view/panel.cpp)
+    view/visualizer.cpp view/player_view.cpp view/panel.cpp view/lyrics_panel.cpp)
 target_include_directories(pm_view PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_view PUBLIC pm_theme pm_core pm_motion)
 target_compile_options(pm_view PRIVATE ${PM_WARNINGS})
@@ -148,7 +148,7 @@ add_custom_command(TARGET pm_test_plugin_pages POST_BUILD
 
 add_executable(pm_tests tests/main.cpp tests/test_motion.cpp tests/test_json.cpp tests/test_theme.cpp
     tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp
-    tests/test_view.cpp tests/test_plugins.cpp tests/test_downloader.cpp
+    tests/test_view.cpp tests/test_plugins.cpp tests/test_downloader.cpp tests/test_lyrics.cpp
     plugins/downloader/ytdlp.cpp)
 target_link_libraries(pm_tests PRIVATE pm_view pm_theme pm_core pm_motion)
 target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})
@@ -169,7 +169,7 @@ if(WIN32)
     add_executable(PlayerMoon WIN32 ${PM_UI_SOURCES} ui/res/app.rc)
     target_link_libraries(PlayerMoon PRIVATE pm_view pm_theme pm_core pm_motion
         d2d1 dwrite dcomp d3d11 dxgi dxguid dwmapi windowscodecs ole32 oleaut32 uuid shell32 shlwapi user32 uxtheme advapi32 gdi32
-        runtimeobject shcore)
+        runtimeobject shcore winhttp)
     add_dependencies(PlayerMoon pm_plugin_history pm_plugin_downloader)
     target_compile_options(PlayerMoon PRIVATE ${PM_WARNINGS})
     target_link_options(PlayerMoon PRIVATE -municode)

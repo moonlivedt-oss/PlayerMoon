@@ -56,6 +56,7 @@ void PlayerView::Rearrange() {
     layout->Arrange(layoutInput, windowWithPanel_, frame);
     ArrangeMini(theme.material, layoutInput.textScale, frame);
     LayoutTabs();
+    LayoutLyrics();
 }
 
 void PlayerView::Resize(bool withPanel) {
@@ -249,6 +250,15 @@ int PlayerView::RowAt(Point p) const {
         const int i = static_cast<int>(std::floor((p.y - top + listScroll) / kPageRowHeight));
         return (i >= 0 && i < RowCount()) ? i : -1;
     }
+    if (CurrentKind() == TabKind::Lyrics) {
+        const float y = p.y - list.y + listScroll;
+        const auto it = std::upper_bound(lyrics.lineY.begin(), lyrics.lineY.end(), y);
+        const int i = static_cast<int>(it - lyrics.lineY.begin()) - 1;
+        if (i < 0 || i >= static_cast<int>(lyrics.lineH.size()) ||
+            y > lyrics.lineY[static_cast<size_t>(i)] + lyrics.lineH[static_cast<size_t>(i)])
+            return -1;
+        return i;
+    }
     const int i = static_cast<int>(std::floor((p.y - list.y + listScroll) / frame.rowHeight));
     return (i >= 0 && i < RowCount()) ? i : -1;
 }
@@ -403,6 +413,15 @@ void PlayerView::OnMouseUp(Point p, double nowTime) {
         return;
     }
     if (CurrentKind() == TabKind::Page) return;  // у страниц нажимаются только кнопки
+    if (CurrentKind() == TabKind::Lyrics) {
+        // Клик по строке синхронного текста - перемотка к ней
+        if (lyrics.state == LyricsState::Synced && row < static_cast<int>(lyrics.times.size()) &&
+            !lyrics.lines[static_cast<size_t>(row)].empty()) {
+            host_->Seek(lyrics.times[static_cast<size_t>(row)]);
+            lyrics.manualUntil = 0;
+        }
+        return;
+    }
     if (row == snap.index) host_->TogglePlay();
     else host_->PlayIndex(row);
 }
@@ -454,6 +473,7 @@ void PlayerView::OnWheel(Point p, float delta, double nowTime) {
         return;
     }
     if (!panel) return;
+    if (CurrentKind() == TabKind::Lyrics) lyrics.manualUntil = nowTime + 4.0;
     const float maxScroll = std::max(0.f, ContentHeight() - ListViewHeight());
     ShowScrollbar(true);
     // delta - доли «щелчка» колеса (120 единиц Windows = 1); щелчок = три строки
@@ -505,12 +525,15 @@ void PlayerView::TogglePlaylist(double nowTime) {
         Resize(true);
         panelAlpha.To(1, motion.base, motion.out, timeline, motion.reduce ? 0 : kPanelDelay);
         panelShift.To(0, motion.slow, motion.out, timeline, motion.reduce ? 0 : kPanelDelay);
-        // Текущий трек в поле зрения
+        // Текущий трек (или звучащая строка песни) в поле зрения
+        if (CurrentKind() == TabKind::Lyrics) ScrollToLyric(lyrics.current, false);
         const float listH = frame[Elem::List].h;
         const float rowTop = std::max(0, snap.index) * frame.rowHeight;
         float scroll = scrollAnim.Target();
-        if (rowTop < scroll) scroll = rowTop;
-        if (rowTop + frame.rowHeight > scroll + listH) scroll = rowTop + frame.rowHeight - listH;
+        if (CurrentKind() == TabKind::Queue) {
+            if (rowTop < scroll) scroll = rowTop;
+            if (rowTop + frame.rowHeight > scroll + listH) scroll = rowTop + frame.rowHeight - listH;
+        }
         scrollAnim.Snap(std::max(0.f, scroll));
         // Лесенка строк
         const int first = static_cast<int>(scrollAnim.Target() / frame.rowHeight);
@@ -545,7 +568,11 @@ void PlayerView::SwitchTab(int tab) {
     tabAnim.Snap(motion.reduce ? 1.f : 0.f);
     tabAnim.To(1, motion.base, motion.out, timeline);
     scrollAnim.Snap(0);
-    listScroll = 0;
+    if (CurrentKind() == TabKind::Lyrics) {
+        lyrics.manualUntil = 0;
+        ScrollToLyric(lyrics.current, false);
+    }
+    listScroll = scrollAnim.Target();
     if (hoverRow >= 0 && hoverRow < static_cast<int>(rowHover.size()))
         rowHover[static_cast<size_t>(hoverRow)].Snap(0);
     hoverRow = -1;
@@ -719,13 +746,15 @@ void PlayerView::Update(double nowTime, const PlaybackSnapshot& s, const std::ve
         snapOr(muteCross, (s.muted || v <= 0) ? 1.f : 0.f, motion.spring, motion.springCurve);
     }
     snap = s;
+    UpdateLyrics(s.position);
 
     // Строки плейлиста: состояния по числу треков
     listCount = s.count;
     // Ховер нужен и строкам плагинов, лесенка - только очереди
     size_t pageRows = 0;
     for (const auto& pg : pages) pageRows = std::max(pageRows, pg.rows.size());
-    rowHover.resize(std::max({static_cast<size_t>(listCount), static_cast<size_t>(pluginCount + 1), pageRows}));
+    rowHover.resize(std::max({static_cast<size_t>(listCount), static_cast<size_t>(pluginCount + 1), pageRows,
+                              lyrics.lines.size()}));
     rowAlpha.resize(static_cast<size_t>(listCount), motion::Tween(1));
     rowShift.resize(static_cast<size_t>(listCount), motion::Tween(0));
     listScroll = scrollAnim.Value(nowTime);

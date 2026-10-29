@@ -17,6 +17,7 @@
 
 #include "core/fft.h"
 #include "core/library.h"
+#include "core/lyrics.h"
 #include "core/player.h"
 #include "core/plugins.h"
 #include "theme/theme.h"
@@ -56,6 +57,7 @@ public:
     void PageAction(int page, int rowId, int actionId) override;
     void OpenFiles(bool folder) override;
     float MeasureText(view::TextStyle style, const std::string& text) override;
+    float MeasureWrapped(view::TextStyle style, const std::string& text, float width) override;
 
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -106,6 +108,11 @@ private:
     // Запомнить папки, из которых пользователь что-то открыл
     void LearnFolders(const std::vector<std::filesystem::path>& paths);
 
+    // ----- тексты песен -----
+    // Вкладка «Текст» на экране: найти текст текущего трека (один раз на трек)
+    void RequestLyrics();
+    void OnLyricsReady();
+
     // ----- плагины -----
     void InitPlugins(const std::set<std::string>& enabled);
     std::filesystem::path UserPluginsDir() const;
@@ -146,6 +153,9 @@ private:
     FolderWatcher watcher_;
     bool rescanPending_ = false;
     bool playlistFromLibrary_ = false;
+
+    pm::LyricsService lyrics_;
+    uint64_t lyricsSerial_ = 0;  // трек, для которого уже искали текст
 
     pm::PluginManager plugins_;
     std::vector<PluginRow> pluginRows_;

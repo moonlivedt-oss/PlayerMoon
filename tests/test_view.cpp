@@ -55,6 +55,10 @@ public:
     int rowMenu = -1, toggledPlugin = -1, folderOpens = 0, openFiles = 0;
     std::array<int, 3> lastAction{-1, -1, -1};
     float MeasureText(view::TextStyle, const std::string& t) override { return static_cast<float>(t.size()) * 9.f; }
+    // Перенос: по 9 DIP на байт, строка 22 DIP
+    float MeasureWrapped(view::TextStyle, const std::string& t, float width) override {
+        return 22.f * std::max(1.f, std::ceil(static_cast<float>(t.size()) * 9.f / width));
+    }
 };
 
 // Прогнать кадры до момента t с шагом 1/60 с
@@ -349,9 +353,9 @@ TEST(ViewPanelTabsWheelAndTime) {
 
     // Раздел «Плагины» открывает панель на нужной вкладке
     v.SetPlugins({false, true}, 0.3);
-    v.ShowPanelTab(1, 0.3);
+    v.ShowPanelTab(v.PluginsTab(), 0.3);
     for (double t = 0.3; t < 2; t += 0.05) v.Update(t, s, nullptr, true);
-    CHECK(v.playlistOpen && v.panelTab == 1 && v.RowCount() == 3);
+    CHECK(v.playlistOpen && v.panelTab == v.PluginsTab() && v.RowCount() == 3);
     // Клик по строке плагина - переключение, по последней строке - папка плагинов
     const view::Rect r0 = f.Row(0, 0), r2 = f.Row(2, 0);
     click({r0.CenterX(), r0.CenterY()}, 2.0);
@@ -385,7 +389,7 @@ TEST(ViewPagesTooltipsToasts) {
     v.Update(0, s, nullptr, true);
     const auto& f = v.frame;
 
-    // Страница плагина: вкладка между «Очередь» и «Плагины», шапка с кнопками, строки с кнопками
+    // Страница плагина: вкладка между «Текст» и «Плагины», шапка с кнопками, строки с кнопками
     view::PanelPage page;
     page.title = "Загрузки";
     page.emptyText = "Пусто";
@@ -398,8 +402,9 @@ TEST(ViewPagesTooltipsToasts) {
     row.actions = {{1, "Отмена"}};
     page.rows = {row};
     v.SetPages({page}, 0.1);
-    CHECK(v.TabCount() == 3 && v.PluginsTab() == 2 && v.tabRects.size() == 3);
-    CHECK(v.tabRects[1].x > v.tabRects[0].Right() && v.tabRects[2].x > v.tabRects[1].Right());
+    CHECK(v.TabCount() == 4 && v.PluginsTab() == 3 && v.tabRects.size() == 4 && v.PageTab(0) == 2);
+    CHECK(v.tabRects[1].x > v.tabRects[0].Right() && v.tabRects[2].x > v.tabRects[1].Right() &&
+          v.tabRects[3].x > v.tabRects[2].Right());
     v.ShowPanelTab(v.PageTab(0), 0.1);
     double t = 0.1;
     for (; t < 1.5; t += 0.05) v.Update(t, s, nullptr, true);
@@ -420,7 +425,7 @@ TEST(ViewPagesTooltipsToasts) {
     CHECK(host.lastAction == (std::array<int, 3>{0, 100, 1}));
     // Плагин убрал страницу - вкладка возвращается к очереди
     v.SetPages({}, t);
-    CHECK(v.TabCount() == 2 && v.panelTab == 0);
+    CHECK(v.TabCount() == 3 && v.panelTab == 0);
 
     // Пустой плейлист: кнопки «Открыть папку» и «Открыть файлы»
     const view::Rect e1 = v.EmptyActionRect(1);
@@ -462,4 +467,69 @@ TEST(ViewPagesTooltipsToasts) {
     v.SetBusy(false, "");
     v.Update(wake + 2.2, s, nullptr, true);
     CHECK(!v.NeedsFrames());
+}
+
+TEST(ViewLyricsTab) {
+    FakeHost host;
+    view::PlayerView v;
+    v.SetHost(&host);
+    v.ApplyTheme(Lib().Make("glass"), Lib().Layout("classic"), false, 0, false);
+    view::PlaybackSnapshot s;
+    s.hasTrack = true;
+    s.playing = true;
+    s.duration = 200;
+    s.count = 1;
+    s.index = 0;
+    v.Update(0, s, nullptr, true);
+    // Вкладка «Текст» - вторая; окну нужен текст только пока она на экране
+    CHECK(v.KindOf(1) == view::PlayerView::TabKind::Lyrics && !v.WantsLyrics());
+    v.ShowPanelTab(view::PlayerView::kLyricsTab, 0);
+    double t = 0;
+    for (; t < 1.5; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(v.WantsLyrics());
+
+    // 40 строк по 5 секунд, восьмая - длинная (переносится), десятая - пустая (пауза)
+    std::vector<std::string> lines;
+    std::vector<double> times;
+    for (int i = 0; i < 40; ++i) {
+        lines.push_back(i == 7 ? std::string(200, 'a') : i == 9 ? std::string() : "line " + std::to_string(i));
+        times.push_back(i * 5.0);
+    }
+    v.SetLyrics(5, view::LyricsState::Synced, lines, times, t);
+    CHECK(v.RowCount() == 40 && v.lyrics.lineH[7] > v.lyrics.lineH[6] * 2 && v.lyrics.lineH[9] < v.lyrics.lineH[6]);
+    CHECK(v.lyrics.current == 0 && v.listScroll == 0);
+    // Песня дошла до 20-й строки: подсветка и прокрутка следом
+    s.position = 100.2;
+    for (double e = t + 1; t < e; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(v.lyrics.current == 20);
+    CHECK(v.lyrics.glow[20].Value(t) > 0.99f && v.lyrics.glow[0].Value(t) < 0.01f);
+    const float y20 = v.lyrics.lineY[20] - v.listScroll;  // строка видна, выше середины
+    CHECK(y20 > 0 && y20 < v.ListViewHeight() * 0.5f);
+    // Прокрутка колесом - автопрокрутка ждёт
+    const view::Rect& list = v.frame[view::Elem::List];
+    v.OnWheel({list.CenterX(), list.CenterY()}, 3, t);
+    for (double e = t + 1; t < e; t += 0.05) v.Update(t, s, nullptr, true);
+    const float manual = v.listScroll;
+    s.position = 110.2;
+    for (double e = t + 1; t < e; t += 0.05) v.Update(t, s, nullptr, true);
+    CHECK(v.lyrics.current == 22 && std::abs(v.listScroll - manual) < 0.5f);
+    // Клик по видимой строке - перемотка к её времени
+    const float clickY = list.y + v.lyrics.lineY[3] - v.listScroll + 4;
+    CHECK(clickY > list.y && clickY < list.Bottom());
+    v.OnMouseDown({list.CenterX(), clickY}, t);
+    v.OnMouseUp({list.CenterX(), clickY}, t);
+    CHECK(std::abs(host.seekTo - 15) < 1e-9);
+    // Простой текст: без подсветки и перемотки
+    host.seekTo = -1;
+    v.SetLyrics(6, view::LyricsState::Plain, {"a", "b"}, {}, t);
+    s.position = 3;
+    v.Update(t + 0.1, s, nullptr, true);
+    CHECK(v.lyrics.current == -1 && v.RowCount() == 2);
+    const float py = list.y + v.lyrics.lineY[0] - v.listScroll + 4;
+    v.OnMouseDown({list.CenterX(), py}, t + 0.1);
+    v.OnMouseUp({list.CenterX(), py}, t + 0.1);
+    CHECK(host.seekTo == -1);
+    // Состояние без строк (ищу, не найдено)
+    v.SetLyrics(7, view::LyricsState::Loading, {}, {}, t + 0.2);
+    CHECK(v.RowCount() == 0 && v.lyrics.state == view::LyricsState::Loading);
 }

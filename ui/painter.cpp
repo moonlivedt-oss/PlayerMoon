@@ -949,8 +949,10 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
         const bool active = v.panelTab == i;
         const float h = i < static_cast<int>(v.tabHover.size()) ? std::clamp(v.tabHover[static_cast<size_t>(i)].Value(now), 0.f, 1.f) : 0.f;
         const Rgba color = active ? text_c_ : motion::Mix(Text3(), text_c_, h * 0.6f);
-        const std::wstring name = i == 0 ? L"Очередь" : i == tabs - 1 ? L"Плагины"
-                                                                       : ::text::Utf8ToWide(v.pages[static_cast<size_t>(i - 1)].title);
+        const std::wstring name = i == 0                            ? L"Очередь"
+                                  : i == view::PlayerView::kLyricsTab ? L"Текст"
+                                  : i == tabs - 1                     ? L"Плагины"
+                                                                      : ::text::Utf8ToWide(v.pages[static_cast<size_t>(i - 2)].title);
         TextSpec spec = heading;
         spec.ellipsis = true;
         if (auto l = text_->Layout(name, spec, r.w + 1, r.h)) dc_->DrawTextLayout({r.x, r.y}, l.Get(), Brush(color));
@@ -997,6 +999,7 @@ void Painter::DrawPlaylist(const view::PlayerView& v, const PaintInput& in) {
     switch (v.CurrentKind()) {
         case view::PlayerView::TabKind::Plugins: DrawPluginRows(v, in); break;
         case view::PlayerView::TabKind::Page: DrawPageRows(v); break;
+        case view::PlayerView::TabKind::Lyrics: DrawLyrics(v); break;
         default: DrawQueueRows(v, in); break;
     }
     PopTransform();
@@ -1227,6 +1230,15 @@ TextSpec Painter::TabSpecFor(const view::PlayerView& v, bool small) {
     return t;
 }
 
+TextSpec Painter::LyricSpec(const view::PlayerView& v) {
+    TextSpec t;
+    t.size = v.theme.material.font.fsRow * v.layoutInput.textScale * 1.12f;
+    t.weight = 600;
+    t.ellipsis = false;
+    t.wrap = true;
+    return t;
+}
+
 TextSpec Painter::PillSpec() {
     TextSpec t;
     t.size = 12;
@@ -1264,6 +1276,56 @@ void Painter::DrawPill(const view::PlayerView& v, const Rect& r, const std::wstr
         dc_->DrawRoundedRectangle(D2D1::RoundedRect(Inflate(rr, -0.5f), rad, rad), Brush(Color(m.color.panelBorder)), 1);
     TextSpec spec = PillSpec();
     if (auto l = text_->Layout(label, spec, r.w - 12, r.h)) dc_->DrawTextLayout({r.x + 6, r.y}, l.Get(), Brush(fg));
+}
+
+void Painter::DrawLyrics(const view::PlayerView& v) {
+    using view::LyricsState;
+    const view::LyricsPanel& L = v.lyrics;
+    const Rect& list = v.frame[Elem::List];
+    if (L.lines.empty()) {
+        const wchar_t* msg = L"Откройте трек, и здесь появится его текст";
+        switch (L.state) {
+            case LyricsState::Loading: msg = L"Ищу текст песни..."; break;
+            case LyricsState::NotFound:
+                msg = L"Текст не найден. Файл .lrc с тем же именем рядом с треком покажется здесь";
+                break;
+            case LyricsState::Instrumental: msg = L"Инструментальная композиция, слов нет"; break;
+            case LyricsState::Offline: msg = L"Нет связи с LRCLIB. Текст загрузится при следующем открытии трека"; break;
+            default: break;
+        }
+        DrawEmptyState(v, msg, list.y + 36);
+        return;
+    }
+    const double now = v.now;
+    const bool synced = L.state == LyricsState::Synced;
+    const TextSpec spec = LyricSpec(v);
+    const float padX = 12;
+    const Rgba dim = Text3();
+    for (size_t i = 0; i < L.lines.size() && i < L.lineY.size(); ++i) {
+        const float y = list.y + L.lineY[i] - v.listScroll;
+        const float h = L.lineH[i];
+        if (y + h < list.y) continue;
+        if (y > list.Bottom()) break;
+        if (L.lines[i].empty()) continue;
+        // Звучащая строка - цветом текста и чуть крупнее, остальные приглушены; простой текст - ровный
+        const float glow = synced && i < L.glow.size() ? std::clamp(L.glow[i].Value(now), 0.f, 1.f) : 0.f;
+        const float hov = synced && i < v.rowHover.size() ? std::clamp(v.rowHover[i].Value(now), 0.f, 1.f) : 0.f;
+        const Rgba color = synced ? motion::Mix(dim, text_c_, std::max(glow, hov * 0.45f)) : Text2();
+        const float textH = std::max(0.f, h - 10);
+        const D2D1_POINT_2F origin{list.x + padX, y + textH / 2};
+        const float scale = 1 + 0.04f * glow * (v.motion.reduce ? 0.f : 1.f);
+        PushTransform(D2D1::Matrix3x2F::Scale(scale, scale, origin));
+        if (glow > 0.01f) {
+            // Полоска акцента слева от звучащей строки
+            const float bh = std::min(textH, spec.size * 1.3f) * glow;
+            dc_->FillRoundedRectangle(
+                D2D1::RoundedRect(D2D1::RectF(list.x + 3, origin.y - bh / 2, list.x + 6, origin.y + bh / 2), 1.5f, 1.5f),
+                Brush(WithAlpha(accent_, glow)));
+        }
+        if (auto l = text_->Layout(::text::Utf8ToWide(L.lines[i]), spec, L.layoutWidth, textH))
+            dc_->DrawTextLayout({list.x + padX, y}, l.Get(), Brush(color));
+        PopTransform();
+    }
 }
 
 void Painter::DrawEmptyState(const view::PlayerView& v, const std::wstring& text, float top) {

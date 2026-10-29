@@ -60,6 +60,7 @@ public:
     static TextSpec TabSpecFor(const view::PlayerView& v, bool small);
     static TextSpec PillSpec();
     static TextSpec TooltipSpec();
+    static TextSpec LyricSpec(const view::PlayerView& v);  // строки песни (с переносом)
 
 private:
     using Rgba = motion::Rgba;
@@ -93,6 +94,7 @@ private:
     void DrawQueueRows(const view::PlayerView& v, const PaintInput& in);
     void DrawPluginRows(const view::PlayerView& v, const PaintInput& in);
     void DrawPageRows(const view::PlayerView& v);
+    void DrawLyrics(const view::PlayerView& v);
     void DrawPill(const view::PlayerView& v, const view::Rect& r, const std::wstring& label, bool primary, bool hovered);
     void DrawEmptyState(const view::PlayerView& v, const std::wstring& text, float top);
     void DrawTextGlow(const std::wstring& text, const TextSpec& spec, const view::Rect& r, const Rgba& color, float sigma,

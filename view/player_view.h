@@ -27,7 +27,7 @@
 namespace view {
 
 // Стили текста, ширину которых view спрашивает у окна (размеры - в ui/painter.cpp)
-enum class TextStyle { Title, MiniTitle, Tab, TabSmall, Pill, Tooltip };
+enum class TextStyle { Title, MiniTitle, Tab, TabSmall, Pill, Tooltip, Lyric };
 
 // Страница плагина в панели (копия данных PluginManager, переведённая в вид для показа)
 struct PanelAction {
@@ -79,6 +79,8 @@ public:
     virtual void OpenFiles(bool folder) = 0;
     // Ширина текста в DIP для бегущей строки
     virtual float MeasureText(TextStyle style, const std::string& text) = 0;
+    // Высота текста с переносом строк по ширине width (строки песни)
+    virtual float MeasureWrapped(TextStyle style, const std::string& text, float width) = 0;
 };
 
 // Снимок состояния плеера на кадр
@@ -101,6 +103,22 @@ struct TrackText {
     // Цвета для фона окна и заглушки: из картинки обложки или из хеша названия (как в макете)
     theme::CoverPalette palette;
     bool hasImage = false;  // есть настоящая картинка обложки
+};
+
+// Вкладка «Текст»: строки песни, текущая подсвечивается, список сам едет за песней
+enum class LyricsState { None, Loading, Synced, Plain, NotFound, Instrumental, Offline };
+
+struct LyricsPanel {
+    LyricsState state = LyricsState::None;
+    uint64_t serial = 0;              // трек, к которому относится текст
+    std::vector<std::string> lines;
+    std::vector<double> times;        // у синхронного текста - время каждой строки
+    std::vector<float> lineY, lineH;  // раскладка внутри списка (DIP, от верха содержимого)
+    float contentHeight = 0;
+    float layoutWidth = 0;            // ширина, под которую разложены строки
+    int current = -1;                 // звучащая строка
+    std::vector<motion::Tween> glow;  // подсветка строк 0..1
+    double manualUntil = 0;           // после прокрутки колесом автопрокрутка ждёт
 };
 
 // Строка текста с анимацией смены (уход, подмена, приход)
@@ -154,15 +172,17 @@ public:
 
     void TogglePlaylist(double now);
     void ToggleMini(double now);
-    // ----- вкладки панели: «Очередь», страницы плагинов, «Плагины» -----
-    enum class TabKind { Queue, Page, Plugins };
-    int TabCount() const { return 2 + static_cast<int>(pages.size()); }
+    // ----- вкладки панели: «Очередь», «Текст», страницы плагинов, «Плагины» -----
+    enum class TabKind { Queue, Lyrics, Page, Plugins };
+    int TabCount() const { return 3 + static_cast<int>(pages.size()); }
     TabKind KindOf(int tab) const {
-        return tab <= 0 ? TabKind::Queue : tab >= TabCount() - 1 ? TabKind::Plugins : TabKind::Page;
+        return tab <= 0 ? TabKind::Queue : tab == 1 ? TabKind::Lyrics : tab >= TabCount() - 1 ? TabKind::Plugins
+                                                                                               : TabKind::Page;
     }
-    int PageOf(int tab) const { return tab - 1; }
+    int PageOf(int tab) const { return tab - 2; }
     int PluginsTab() const { return TabCount() - 1; }
-    int PageTab(int page) const { return 1 + page; }
+    int PageTab(int page) const { return 2 + page; }
+    static constexpr int kLyricsTab = 1;
     TabKind CurrentKind() const { return KindOf(panelTab); }
     // Открывает панель, если она закрыта, и переключает вкладку
     void ShowPanelTab(int tab, double now);
@@ -172,6 +192,12 @@ public:
     void SetPages(std::vector<PanelPage> newPages, double now);
     // Сколько строк в списке текущей вкладки (у плагинов последняя - «Открыть папку плагинов»)
     int RowCount() const;
+    // Текст песни для вкладки «Текст» (times пустой - простой текст)
+    void SetLyrics(uint64_t serial, LyricsState state, std::vector<std::string> lines, std::vector<double> times,
+                   double now);
+    // Вкладка «Текст» на экране: окну пора искать текст текущего трека
+    bool WantsLyrics() const { return playlistOpen && !mini && CurrentKind() == TabKind::Lyrics; }
+    static constexpr float kLyricsPadTop = 14;
 
     // Геометрия содержимого вкладок (общая для попадания мышью и рисования)
     static constexpr float kPageRowHeight = 64;
@@ -224,6 +250,7 @@ public:
     int panelTab = 0;             // индекс вкладки (см. KindOf)
     motion::Tween tabAnim{1};     // проявление списка после смены вкладки
     std::vector<PanelPage> pages;
+    LyricsPanel lyrics;
     std::vector<Rect> tabRects;   // вкладки в шапке панели
     std::vector<motion::Tween> tabHover;
     float tabTextSize = 15;       // при трёх и больше вкладках - мельче
@@ -293,6 +320,10 @@ private:
     void SetHovered(Elem e);
     void SwitchTab(int tab);
     void LayoutTabs();
+    void LayoutLyrics();
+    // Звучащая строка поменялась - подсветка и прокрутка к ней
+    void UpdateLyrics(double position);
+    void ScrollToLyric(int line, bool animate);
     int TabAt(Point p) const;
     // Кнопка-«пилюля» под точкой: true и row/idx (row: -1 шапка страницы, -3 пустой плейлист)
     bool PillAt(Point p, int* row, int* idx) const;

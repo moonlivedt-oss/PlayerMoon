@@ -15,6 +15,7 @@
 #include "core/text.h"
 #include "theme/assets.h"
 #include "theme/palette.h"
+#include "ui/http.h"
 
 namespace ui {
 
@@ -27,6 +28,7 @@ constexpr UINT kLibraryMessage = WM_APP + 2;  // сканер библиотек
 constexpr UINT kWatchMessage = WM_APP + 3;    // в папках библиотеки что-то поменялось
 constexpr UINT kPluginMessage = WM_APP + 4;   // плагин передал работу в поток окна (host->post)
 constexpr UINT kSmtcMessage = WM_APP + 5;     // кнопка или перемотка из системной медиапанели
+constexpr UINT kLyricsMessage = WM_APP + 6;   // найден (или не найден) текст песни
 constexpr ULONG_PTR kCopyDataPaths = 0x504D;  // WM_COPYDATA: пути от второго экземпляра
 constexpr UINT_PTR kTickTimer = 1;            // раз в секунду: время в мини-режиме и на панели задач
 constexpr UINT_PTR kSaveTimer = 2;            // отложенное сохранение после изменений
@@ -197,6 +199,10 @@ int App::Run(HINSTANCE instance, int show) {
     }
     player_.SetOnTrackChanged([this](int index, int direction) { OnTrackChanged(index, direction); });
     pcm_.resize(analyzer_.FftSize());
+    // Тексты песен: кэш рядом с state.json, сеть - lrclib.net в фоновом потоке
+    lyrics_.Start(statePath_.parent_path() / L"lyrics",
+                  [](const std::string& query, std::string& body) { return HttpsGet(L"lrclib.net", query, body); },
+                  [hwnd] { PostMessageW(hwnd, kLyricsMessage, 0, 0); });
 
     view_.SetHost(this);
     LoadSavedState();
@@ -228,6 +234,7 @@ int App::Run(HINSTANCE instance, int show) {
     plugins_.UnloadAll();
     taskbar_.Detach();
     smtc_.Detach();
+    lyrics_.Stop();
     player_.Shutdown();
     renderer_.Shutdown();
     return 0;
@@ -464,6 +471,7 @@ void App::OnTrackChanged(int index, int direction) {
     for (const view::CoverSlot& c : view_.covers) keep.push_back(c.serial);
     covers_.Keep(keep);
     RebuildRows();  // длительность трека уточнилась после открытия декодера
+    lyricsSerial_ = 0;  // текст нового трека ищется, когда видна вкладка «Текст»
     if (index >= 0) smtc_.SetTrack(np.title, np.tags.artist, np.tags.album, np.tags.track, np.tags.cover);
     else smtc_.ClearTrack();
     if (index >= 0 && started_) library_.NotePlayed(np.path, static_cast<int64_t>(time(nullptr)));
@@ -817,8 +825,57 @@ float App::MeasureText(view::TextStyle style, const std::string& s) {
         case view::TextStyle::TabSmall: spec = Painter::TabSpecFor(view_, true); break;
         case view::TextStyle::Pill: spec = Painter::PillSpec(); break;
         case view::TextStyle::Tooltip: spec = Painter::TooltipSpec(); break;
+        case view::TextStyle::Lyric: spec = Painter::LyricSpec(view_); break;
     }
     return text_.Measure(::text::Utf8ToWide(s), spec);
+}
+
+float App::MeasureWrapped(view::TextStyle style, const std::string& s, float width) {
+    const TextSpec spec = style == view::TextStyle::Lyric ? Painter::LyricSpec(view_) : Painter::TooltipSpec();
+    return text_.MeasureHeight(::text::Utf8ToWide(s), spec, width);
+}
+
+void App::RequestLyrics() {
+    const pm::NowPlaying& np = player_.Current();
+    if (np.index < 0) {
+        view_.SetLyrics(0, view::LyricsState::None, {}, {}, Now());
+        return;
+    }
+    if (lyricsSerial_ == np.serial) return;
+    lyricsSerial_ = np.serial;
+    pm::LyricsRequest r;
+    r.serial = np.serial;
+    r.track = np.path;
+    r.title = np.title;
+    r.artist = np.tags.artist;
+    r.album = np.tags.album;
+    r.duration = player_.GetState().duration;
+    view_.SetLyrics(np.serial, view::LyricsState::Loading, {}, {}, Now());
+    lyrics_.Request(std::move(r));
+}
+
+void App::OnLyricsReady() {
+    pm::LyricsResult r;
+    if (!lyrics_.Take(r) || r.serial != player_.Current().serial) return;
+    view::LyricsState state = view::LyricsState::NotFound;
+    std::vector<std::string> lines;
+    std::vector<double> times;
+    switch (r.status) {
+        case pm::LyricsStatus::Found:
+            state = r.lyrics.synced ? view::LyricsState::Synced : view::LyricsState::Plain;
+            for (auto& l : r.lyrics.lines) {
+                lines.push_back(std::move(l.text));
+                times.push_back(l.time);
+            }
+            break;
+        case pm::LyricsStatus::Instrumental: state = view::LyricsState::Instrumental; break;
+        case pm::LyricsStatus::NetworkError:
+            state = view::LyricsState::Offline;  // снова - со следующим треком (без повторов на каждом кадре)
+            break;
+        case pm::LyricsStatus::NotFound: break;
+    }
+    view_.SetLyrics(r.serial, state, std::move(lines), std::move(times), Now());
+    Invalidate();
 }
 
 void App::PageAction(int page, int rowId, int actionId) {
@@ -931,6 +988,7 @@ void App::RenderFrame() {
         }
     }
     SyncPages();
+    if (view_.WantsLyrics()) RequestLyrics();
     view_.SetBusy(scanner_.Running(), "Поиск музыки");
     view_.Update(t, snap, spectrum, visible_);
     ApplyTopmost();
@@ -1156,6 +1214,9 @@ LRESULT App::Handle(UINT msg, WPARAM wp, LPARAM lp) {
                 KillTimer(hwnd_, kLazyTimer);
                 Invalidate();
             }
+            return 0;
+        case kLyricsMessage:
+            OnLyricsReady();
             return 0;
         case kSmtcMessage:
             switch (wp) {

@@ -1,4 +1,4 @@
-// Содержимое панели: вкладки («Очередь», страницы плагинов, «Плагины»), страницы плагинов,
+// Содержимое панели: вкладки («Очередь», «Текст», страницы плагинов, «Плагины»), страницы плагинов,
 // кнопки-«пилюли», подсказки над элементами, уведомления, полоса прокрутки.
 // Это часть PlayerView (основная логика - в player_view.cpp).
 
@@ -33,6 +33,7 @@ constexpr float kPillGap = 6;
 int PlayerView::RowCount() const {
     switch (CurrentKind()) {
         case TabKind::Queue: return listCount;
+        case TabKind::Lyrics: return static_cast<int>(lyrics.lines.size());
         case TabKind::Plugins: return pluginCount + 1;
         case TabKind::Page: {
             const int pg = PageOf(panelTab);
@@ -88,6 +89,7 @@ Rect PlayerView::EmptyActionRect(int i) const {
 
 float PlayerView::ContentHeight() const {
     if (CurrentKind() == TabKind::Page) return static_cast<float>(RowCount()) * kPageRowHeight;
+    if (CurrentKind() == TabKind::Lyrics) return lyrics.contentHeight;
     return static_cast<float>(RowCount()) * frame.rowHeight;
 }
 
@@ -101,7 +103,7 @@ float PlayerView::ListViewHeight() const {
 void PlayerView::LayoutTabs() {
     if (!hasTheme) return;
     const int n = TabCount();
-    const bool small = n > 2;
+    const bool small = n > 3;
     const TextStyle style = small ? TextStyle::TabSmall : TextStyle::Tab;
     tabTextSize = theme.material.font.fsHeading * layoutInput.textScale * (small ? 0.87f : 1.f);
     auto measure = [&](TextStyle st, const std::string& t) {
@@ -113,8 +115,9 @@ void PlayerView::LayoutTabs() {
     const float gap = small ? 14.f : 18.f;
     for (int i = 0; i < n; ++i) {
         const std::string name = i == 0                 ? std::string("Очередь")
+                                  : i == kLyricsTab     ? std::string("Текст")
                                   : i == n - 1          ? std::string("Плагины")
-                                                        : pages[static_cast<size_t>(i - 1)].title;
+                                                        : pages[static_cast<size_t>(i - 2)].title;
         const float w = std::min(110.f, measure(style, name));
         tabRects[static_cast<size_t>(i)] = {x, head.y, w, head.h};
         x += w + gap;

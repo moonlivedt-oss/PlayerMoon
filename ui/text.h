@@ -24,6 +24,7 @@ struct TextSpec {
     DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING;
     bool ellipsis = true;  // обрезка многоточием по ширине
     bool tabular = false;  // цифры одной ширины (время не «прыгает»)
+    bool wrap = false;     // перенос по словам (строки песни); высота - MeasureHeight
 };
 
 class TextSystem {
@@ -35,6 +36,8 @@ public:
     // Раскладка строки. width <= 0 - без ограничения ширины (для бегущей строки).
     ComPtr<IDWriteTextLayout> Layout(const std::wstring& text, const TextSpec& spec, float width, float height);
     float Measure(const std::wstring& text, const TextSpec& spec);
+    // Высота текста с переносом по ширине width
+    float MeasureHeight(const std::wstring& text, const TextSpec& spec, float width);
 
 private:
     IDWriteTextFormat* Format(const TextSpec& spec);

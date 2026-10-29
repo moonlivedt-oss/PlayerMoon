@@ -90,9 +90,9 @@ IDWriteTextFormat* TextSystem::Format(const TextSpec& spec) {
 ComPtr<IDWriteTextLayout> TextSystem::Layout(const std::wstring& text, const TextSpec& spec, float width,
                                              float height) {
     wchar_t head[128];
-    swprintf(head, 128, L"%.2f|%.0f|%d|%d|%d|%.2f|%d|%d|%.1f|%.1f|", spec.size, spec.weight, spec.display ? 1 : 0,
+    swprintf(head, 128, L"%.2f|%.0f|%d|%d|%d|%.2f|%d|%d|%d|%.1f|%.1f|", spec.size, spec.weight, spec.display ? 1 : 0,
              static_cast<int>(spec.align), spec.upper ? 1 : 0, spec.spacing, spec.ellipsis ? 1 : 0,
-             spec.tabular ? 1 : 0, width, height);
+             spec.tabular ? 1 : 0, spec.wrap ? 1 : 0, width, height);
     const std::wstring key = head + text;
     auto it = layouts_.find(key);
     if (it != layouts_.end()) return it->second;
@@ -126,6 +126,7 @@ ComPtr<IDWriteTextLayout> TextSystem::Layout(const std::wstring& text, const Tex
             layout->SetTypography(typo.Get(), {0, static_cast<UINT32>(shown.size())});
         }
     }
+    if (spec.wrap && width > 0) layout->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
     if (spec.ellipsis && width > 0) {
         if (!ellipsis_) factory_->CreateEllipsisTrimmingSign(format, &ellipsis_);
         DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
@@ -143,6 +144,17 @@ float TextSystem::Measure(const std::wstring& text, const TextSpec& spec) {
     DWRITE_TEXT_METRICS m{};
     layout->GetMetrics(&m);
     return m.widthIncludingTrailingWhitespace;
+}
+
+float TextSystem::MeasureHeight(const std::wstring& text, const TextSpec& spec, float width) {
+    TextSpec s = spec;
+    s.ellipsis = false;
+    s.wrap = true;
+    auto layout = Layout(text, s, width, 4000);
+    if (!layout) return 0;
+    DWRITE_TEXT_METRICS m{};
+    layout->GetMetrics(&m);
+    return m.height;
 }
 
 }  // namespace ui
