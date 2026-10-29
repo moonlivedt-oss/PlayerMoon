@@ -1,7 +1,9 @@
 #pragma once
 // Теги и обложки: ID3v1, ID3v2.2/2.3/2.4 (TIT2/TPE1/TALB/APIC), FLAC (VORBIS_COMMENT,
 // PICTURE, длительность из STREAMINFO), WAV (LIST/INFO, чанк id3) и оценка длительности MP3
-// (заголовок Xing/Info/VBRI или постоянный битрейт). Без сторонних библиотек.
+// (заголовок Xing/Info/VBRI или постоянный битрейт), MP4/M4A (ilst: ©nam, ©ART, ©alb, trkn, covr,
+// ReplayGain в «----», длительность из mvhd), Ogg Vorbis и Opus (Vorbis Comment, METADATA_BLOCK_PICTURE,
+// длительность по последней странице). Без сторонних библиотек.
 // Читает только нужные куски файла, поэтому годится для сканирования папок.
 
 #include <cstdint>
@@ -45,7 +47,8 @@ float ReplayGainFactor(const TagInfo& t);
 // без учёта регистра. false - картинки нет.
 bool ReadFolderCover(const std::filesystem::path& audio, std::vector<uint8_t>& out, std::string& mime);
 
-// Поддерживаемые сейчас расширения (нижний регистр, с точкой)
+// Поддерживаемые расширения без учёта регистра. M4A/M4B/AAC/OGG/OGA/OPUS - только в Windows
+// (декодер Media Foundation), теги их читаются везде.
 bool IsSupportedAudio(const std::filesystem::path& path);
 
 }  // namespace pm

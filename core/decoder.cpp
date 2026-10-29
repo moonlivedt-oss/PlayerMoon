@@ -1,5 +1,6 @@
 #include "core/decoder.h"
 
+#include "core/text.h"
 #include "miniaudio.h"
 
 namespace pm {
@@ -49,7 +50,11 @@ private:
 
 std::unique_ptr<IDecoder> OpenDecoder(const std::filesystem::path& path, uint32_t channels, uint32_t sampleRate,
                                       std::string* error) {
-    // Здесь же позже: по расширению .m4a/.aac/.ogg - декодер Media Foundation
+#ifdef _WIN32
+    const std::string ext = text::AsciiLower(text::PathToUtf8(path.extension()));
+    if (ext == ".m4a" || ext == ".m4b" || ext == ".aac" || ext == ".ogg" || ext == ".oga" || ext == ".opus")
+        return OpenMfDecoder(path, channels, sampleRate, error);
+#endif
     auto d = std::make_unique<MiniaudioDecoder>();
     if (!d->Open(path, channels, sampleRate, error)) return nullptr;
     return d;

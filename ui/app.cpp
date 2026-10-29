@@ -513,7 +513,8 @@ void App::LoadPaths(const std::vector<std::filesystem::path>& paths, bool append
 }
 
 void App::OpenFiles(bool folder) {
-    auto paths = PickPaths(hwnd_, folder, !folder, L"Аудио (MP3, FLAC, WAV)", L"*.mp3;*.flac;*.wav");
+    auto paths = PickPaths(hwnd_, folder, !folder, L"Аудио (MP3, FLAC, WAV, M4A, AAC, OGG, Opus)",
+                           L"*.mp3;*.flac;*.wav;*.m4a;*.m4b;*.aac;*.ogg;*.oga;*.opus");
     if (!paths.empty()) LoadPaths(paths);
 }
 

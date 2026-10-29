@@ -270,3 +270,218 @@ TEST(BrokenFilesDoNotCrash) {
     MemSource c(std::vector<uint8_t>{'f', 'L', 'a', 'C', 0x86, 0xFF, 0xFF, 0xFF});
     CHECK(pm::ReadTags(c, t, true));
 }
+
+namespace {
+
+// Атом MP4: [размер][тип][данные]
+std::vector<uint8_t> Atom(const std::string& type, const std::vector<uint8_t>& body) {
+    std::vector<uint8_t> a;
+    PutBe32(a, static_cast<uint32_t>(body.size() + 8));
+    PutStr(a, type);
+    a.insert(a.end(), body.begin(), body.end());
+    return a;
+}
+
+std::vector<uint8_t> Cat(std::initializer_list<std::vector<uint8_t>> parts) {
+    std::vector<uint8_t> out;
+    for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end());
+    return out;
+}
+
+// Элемент ilst со значением в атоме data
+std::vector<uint8_t> Item(const std::string& type, uint32_t dataType, const std::vector<uint8_t>& value) {
+    std::vector<uint8_t> d;
+    PutBe32(d, dataType);
+    PutBe32(d, 0);  // локаль
+    d.insert(d.end(), value.begin(), value.end());
+    return Atom(type, Atom("data", d));
+}
+
+std::string Base64(const std::vector<uint8_t>& b) {
+    static const char* k = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    for (size_t i = 0; i < b.size(); i += 3) {
+        const uint32_t v = (uint32_t(b[i]) << 16) | (i + 1 < b.size() ? uint32_t(b[i + 1]) << 8 : 0) |
+                           (i + 2 < b.size() ? b[i + 2] : 0);
+        out += k[(v >> 18) & 63];
+        out += k[(v >> 12) & 63];
+        out += i + 1 < b.size() ? k[(v >> 6) & 63] : '=';
+        out += i + 2 < b.size() ? k[v & 63] : '=';
+    }
+    return out;
+}
+
+// Страницы Ogg для одного пакета (сегменты по 255 байт, пакет может занять несколько страниц)
+void OggPackets(std::vector<uint8_t>& f, const std::vector<std::vector<uint8_t>>& packets, uint64_t granule,
+                uint32_t serial, uint32_t& seq) {
+    std::vector<uint8_t> lacing, body;
+    auto flush = [&] {
+        PutStr(f, "OggS");
+        f.push_back(0);
+        f.push_back(0);
+        tests::PutLe32(f, static_cast<uint32_t>(granule));
+        tests::PutLe32(f, static_cast<uint32_t>(granule >> 32));
+        tests::PutLe32(f, serial);
+        tests::PutLe32(f, seq++);
+        tests::PutLe32(f, 0);  // CRC не проверяется
+        f.push_back(static_cast<uint8_t>(lacing.size()));
+        f.insert(f.end(), lacing.begin(), lacing.end());
+        f.insert(f.end(), body.begin(), body.end());
+        lacing.clear();
+        body.clear();
+    };
+    for (const auto& p : packets) {
+        size_t at = 0;
+        for (;;) {
+            const size_t n = std::min<size_t>(p.size() - at, 255);
+            lacing.push_back(static_cast<uint8_t>(n));
+            body.insert(body.end(), p.begin() + static_cast<long>(at), p.begin() + static_cast<long>(at + n));
+            at += n;
+            if (lacing.size() == 255) flush();
+            if (n < 255) break;
+        }
+    }
+    if (!lacing.empty()) flush();
+}
+
+std::vector<uint8_t> VorbisComment(const std::vector<std::string>& comments) {
+    std::vector<uint8_t> vc;
+    tests::PutLe32(vc, 3);
+    PutStr(vc, "pm!");
+    tests::PutLe32(vc, static_cast<uint32_t>(comments.size()));
+    for (const auto& c : comments) {
+        tests::PutLe32(vc, static_cast<uint32_t>(c.size()));
+        PutStr(vc, c);
+    }
+    return vc;
+}
+
+}  // namespace
+
+TEST(Mp4TagsCoverAndDuration) {
+    std::vector<uint8_t> mvhd(100, 0);  // версия 0: масштаб 1000, длительность 215.5 с
+    mvhd[12] = 0, mvhd[13] = 0, mvhd[14] = 0x03, mvhd[15] = 0xE8;
+    const uint32_t dur = 215500;
+    for (int i = 0; i < 4; ++i) mvhd[16 + i] = static_cast<uint8_t>(dur >> (24 - 8 * i));
+    std::vector<uint8_t> mean{0, 0, 0, 0}, name{0, 0, 0, 0};
+    PutStr(mean, "com.apple.iTunes");
+    PutStr(name, "replaygain_track_gain");
+    std::vector<uint8_t> rgData{0, 0, 0, 1, 0, 0, 0, 0};
+    PutStr(rgData, "-4.25 dB");
+    const auto ilst = Atom("ilst", Cat({Item("\xA9nam", 1, Utf8("Синий час")), Item("\xA9" "ART", 1, Utf8("Кварц")),
+                                        Item("\xA9" "alb", 1, Utf8("Окна")), Item("trkn", 0, {0, 0, 0, 5, 0, 12, 0, 0}),
+                                        Item("covr", 14, kPng),
+                                        Atom("----", Cat({Atom("mean", mean), Atom("name", name),
+                                                          Atom("data", rgData)}))}));
+    std::vector<uint8_t> metaBody{0, 0, 0, 0};  // версия и флаги
+    const auto hdlr = Atom("hdlr", std::vector<uint8_t>(25, 0));
+    metaBody.insert(metaBody.end(), hdlr.begin(), hdlr.end());
+    metaBody.insert(metaBody.end(), ilst.begin(), ilst.end());
+    const auto moov = Atom("moov", Cat({Atom("mvhd", mvhd), Atom("udta", Atom("meta", metaBody))}));
+    std::vector<uint8_t> ftyp;
+    PutStr(ftyp, "M4A ");
+    PutBe32(ftyp, 0);
+    // moov после mdat, как у файлов без «быстрого старта»
+    const auto file = Cat({Atom("ftyp", ftyp), Atom("mdat", std::vector<uint8_t>(3000, 0x55)), moov});
+    MemSource src(file);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, true));
+    CHECK(t.title == "Синий час" && t.artist == "Кварц" && t.album == "Окна");
+    CHECK(t.track == 5);
+    CHECK_NEAR(t.duration, 215.5, 1e-9);
+    CHECK(t.cover == kPng && t.coverMime == "image/png");
+    CHECK(t.hasReplayGain && std::abs(t.replayGainDb + 4.25f) < 1e-4f);
+    // Без обложки - те же теги
+    pm::TagInfo quick;
+    CHECK(pm::ReadTags(src, quick, false) && quick.cover.empty() && quick.title == "Синий час");
+    // Обрезанный файл не роняет разбор
+    for (size_t cut : {size_t(8), size_t(20), file.size() - 40, file.size() - 1}) {
+        MemSource part(std::vector<uint8_t>(file.begin(), file.begin() + static_cast<long>(cut)));
+        pm::TagInfo x;
+        CHECK(pm::ReadTags(part, x, true));
+    }
+}
+
+TEST(OggOpusTagsAndDuration) {
+    std::vector<uint8_t> head;
+    PutStr(head, "OpusHead");
+    head.push_back(1);  // версия
+    head.push_back(2);  // каналы
+    tests::PutLe16(head, 312);  // preSkip
+    tests::PutLe32(head, 44100);
+    tests::PutLe16(head, 0);
+    head.push_back(0);
+    // Обложка METADATA_BLOCK_PICTURE (base64 блока PICTURE): комментарий больше страницы
+    std::vector<uint8_t> pic;
+    PutBe32(pic, 3);
+    PutBe32(pic, 9);
+    PutStr(pic, "image/png");
+    PutBe32(pic, 0);
+    for (int i = 0; i < 4; ++i) PutBe32(pic, 0);
+    std::vector<uint8_t> big = kPng;
+    big.resize(70000, 0xAB);
+    PutBe32(pic, static_cast<uint32_t>(big.size()));
+    pic.insert(pic.end(), big.begin(), big.end());
+    std::vector<uint8_t> tags;
+    PutStr(tags, "OpusTags");
+    const auto vc = VorbisComment({"TITLE=Тихая гавань", "ARTIST=Море", "album=Берег", "TRACKNUMBER=3",
+                                   "METADATA_BLOCK_PICTURE=" + Base64(pic)});
+    tags.insert(tags.end(), vc.begin(), vc.end());
+    std::vector<uint8_t> f;
+    uint32_t seq = 0;
+    OggPackets(f, {head}, 0, 77, seq);
+    OggPackets(f, {tags}, 0, 77, seq);
+    // Аудио: 10 с при 48 кГц плюс preSkip
+    OggPackets(f, {std::vector<uint8_t>(100, 1)}, 240000, 77, seq);
+    OggPackets(f, {std::vector<uint8_t>(100, 1)}, 480000 + 312, 77, seq);
+    MemSource src(f);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, true));
+    CHECK(t.title == "Тихая гавань" && t.artist == "Море" && t.album == "Берег" && t.track == 3);
+    CHECK_NEAR(t.duration, 10.0, 1e-9);
+    CHECK(t.cover == big && t.coverMime == "image/png");
+    pm::TagInfo quick;
+    CHECK(pm::ReadTags(src, quick, false) && quick.cover.empty() && quick.title == "Тихая гавань");
+}
+
+TEST(OggVorbisTagsAndDuration) {
+    std::vector<uint8_t> id;
+    id.push_back(1);
+    PutStr(id, "vorbis");
+    tests::PutLe32(id, 0);
+    id.push_back(2);
+    tests::PutLe32(id, 44100);
+    id.resize(30, 0);
+    std::vector<uint8_t> tags{3};
+    PutStr(tags, "vorbis");
+    const auto vc = VorbisComment({"title=Снег", "ARTIST=Зима", "REPLAYGAIN_TRACK_GAIN=-2 dB"});
+    tags.insert(tags.end(), vc.begin(), vc.end());
+    tags.push_back(1);  // бит кадрирования
+    std::vector<uint8_t> f;
+    uint32_t seq = 0;
+    OggPackets(f, {id}, 0, 5, seq);
+    // Комментарий и setup на одной странице
+    OggPackets(f, {tags, std::vector<uint8_t>(40, 5)}, 0, 5, seq);
+    OggPackets(f, {std::vector<uint8_t>(300, 1)}, 44100 * 3, 5, seq);
+    MemSource src(f);
+    pm::TagInfo t;
+    CHECK(pm::ReadTags(src, t, true));
+    CHECK(t.title == "Снег" && t.artist == "Зима" && t.hasReplayGain);
+    CHECK_NEAR(t.duration, 3.0, 1e-9);
+    // Обрезанные страницы не роняют разбор
+    for (size_t cut : {size_t(4), size_t(30), size_t(60), f.size() - 10}) {
+        MemSource part(std::vector<uint8_t>(f.begin(), f.begin() + static_cast<long>(cut)));
+        pm::TagInfo x;
+        CHECK(pm::ReadTags(part, x, true));
+    }
+}
+
+TEST(SupportedExtensions) {
+    CHECK(pm::IsSupportedAudio("a/b.MP3") && pm::IsSupportedAudio("x.flac") && pm::IsSupportedAudio("x.wav"));
+    CHECK(!pm::IsSupportedAudio("x.txt") && !pm::IsSupportedAudio("cover.jpg"));
+#ifdef _WIN32
+    CHECK(pm::IsSupportedAudio("x.M4A") && pm::IsSupportedAudio("x.opus") && pm::IsSupportedAudio("x.ogg"));
+#else
+    CHECK(!pm::IsSupportedAudio("x.m4a"));
+#endif
+}

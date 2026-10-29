@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <optional>
+#include <string_view>
 
 #include "core/text.h"
 
@@ -275,6 +277,86 @@ double Mp3Duration(ByteSource& s, uint64_t audioStart, uint64_t audioEnd) {
 }
 
 // ---------- FLAC ----------
+// Блок PICTURE (он же METADATA_BLOCK_PICTURE в Vorbis Comment после base64)
+void ParseFlacPicture(const uint8_t* b, size_t size, TagInfo& out) {
+    size_t p = 4;  // тип картинки
+    if (p + 4 > size) return;
+    const uint32_t mimeLen = Be32(b + p);
+    p += 4;
+    if (mimeLen > size - p) return;
+    const std::string mime(reinterpret_cast<const char*>(b + p), mimeLen);
+    p += mimeLen;
+    if (p + 4 > size) return;
+    const uint32_t descLen = Be32(b + p);
+    p += 4;
+    if (descLen > size - p || size - p - descLen < 20) return;
+    p += descLen + 16;  // ширина, высота, глубина, палитра
+    const uint32_t dataLen = Be32(b + p);
+    p += 4;
+    if (dataLen > size - p || dataLen > kMaxCover) return;
+    out.cover.assign(b + p, b + p + dataLen);
+    out.coverMime = text::AsciiLower(mime);
+}
+
+// base64 без переносов строк; неверные символы пропускаются
+std::vector<uint8_t> Base64Decode(std::string_view in) {
+    std::vector<uint8_t> out;
+    out.reserve(in.size() * 3 / 4);
+    uint32_t acc = 0;
+    int bits = 0;
+    for (char c : in) {
+        int v;
+        if (c >= 'A' && c <= 'Z') v = c - 'A';
+        else if (c >= 'a' && c <= 'z') v = c - 'a' + 26;
+        else if (c >= '0' && c <= '9') v = c - '0' + 52;
+        else if (c == '+') v = 62;
+        else if (c == '/') v = 63;
+        else if (c == '=') break;
+        else continue;
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>(acc >> bits));
+        }
+    }
+    return out;
+}
+
+// Vorbis Comment (FLAC, Ogg Vorbis, Opus): числа little endian, поля «КЛЮЧ=значение»
+void ParseVorbisComment(const uint8_t* b, size_t size, TagInfo& out, bool wantCover) {
+    size_t p = 0;
+    auto u32 = [&](uint32_t& v) {
+        if (p + 4 > size) return false;
+        v = Le32(b + p);
+        p += 4;
+        return true;
+    };
+    uint32_t vendor = 0, count = 0;
+    if (!u32(vendor) || vendor > size - p) return;
+    p += vendor;
+    if (!u32(count)) return;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t n = 0;
+        if (!u32(n) || n > size - p) break;
+        const std::string_view kv(reinterpret_cast<const char*>(b + p), n);
+        p += n;
+        const size_t eq = kv.find('=');
+        if (eq == std::string_view::npos) continue;
+        const std::string key = text::AsciiLower(std::string(kv.substr(0, eq)));
+        const std::string_view value = kv.substr(eq + 1);
+        if (key == "title") SetIfEmpty(out.title, std::string(value));
+        else if (key == "artist") SetIfEmpty(out.artist, std::string(value));
+        else if (key == "album") SetIfEmpty(out.album, std::string(value));
+        else if (key == "metadata_block_picture") {
+            if (wantCover && out.cover.empty()) {
+                const auto pic = Base64Decode(value);
+                ParseFlacPicture(pic.data(), pic.size(), out);
+            }
+        } else ApplyExtraField(key, std::string(value), out);
+    }
+}
+
 bool ReadFlac(ByteSource& s, uint64_t at, TagInfo& out, bool wantCover) {
     const auto magic = ReadBytes(s, at, 4);
     if (magic.size() < 4 || std::memcmp(magic.data(), "fLaC", 4) != 0) return false;
@@ -293,59 +375,12 @@ bool ReadFlac(ByteSource& s, uint64_t at, TagInfo& out, bool wantCover) {
                 const uint64_t samples = (uint64_t(b[13] & 0x0F) << 32) | Be32(&b[14]);
                 if (rate) out.duration = double(samples) / rate;
             }
-        } else if (type == 4 && len <= kMaxTag) {  // VORBIS_COMMENT, числа little endian
+        } else if (type == 4 && len <= kMaxTag) {  // VORBIS_COMMENT
             const auto b = ReadBytes(s, pos, len);
-            size_t p = 0;
-            auto u32 = [&](uint32_t& v) {
-                if (p + 4 > b.size()) return false;
-                v = Le32(&b[p]);
-                p += 4;
-                return true;
-            };
-            uint32_t vendor = 0, count = 0;
-            if (u32(vendor) && vendor <= b.size() - p) {
-                p += vendor;
-                if (u32(count)) {
-                    for (uint32_t i = 0; i < count; ++i) {
-                        uint32_t n = 0;
-                        if (!u32(n) || n > b.size() - p) break;
-                        const std::string kv(reinterpret_cast<const char*>(&b[p]), n);
-                        p += n;
-                        const size_t eq = kv.find('=');
-                        if (eq == std::string::npos) continue;
-                        const std::string key = text::AsciiLower(kv.substr(0, eq));
-                        if (key == "title") SetIfEmpty(out.title, kv.substr(eq + 1));
-                        else if (key == "artist") SetIfEmpty(out.artist, kv.substr(eq + 1));
-                        else if (key == "album") SetIfEmpty(out.album, kv.substr(eq + 1));
-                        else ApplyExtraField(key, kv.substr(eq + 1), out);
-                    }
-                }
-            }
+            ParseVorbisComment(b.data(), b.size(), out, wantCover);
         } else if (type == 6 && wantCover && out.cover.empty() && len <= kMaxCover + 1024) {  // PICTURE
             const auto b = ReadBytes(s, pos, len);
-            size_t p = 4;  // тип картинки
-            if (p + 4 <= b.size()) {
-                const uint32_t mimeLen = Be32(&b[p]);
-                p += 4;
-                if (mimeLen <= b.size() - p) {
-                    const std::string mime(reinterpret_cast<const char*>(&b[p]), mimeLen);
-                    p += mimeLen;
-                    if (p + 4 <= b.size()) {
-                        const uint32_t descLen = Be32(&b[p]);
-                        p += 4;
-                        if (descLen <= b.size() - p && b.size() - p - descLen >= 20) {
-                            p += descLen + 16;  // ширина, высота, глубина, палитра
-                            const uint32_t dataLen = Be32(&b[p]);
-                            p += 4;
-                            if (dataLen <= b.size() - p) {
-                                out.cover.assign(b.begin() + static_cast<long>(p),
-                                                 b.begin() + static_cast<long>(p + dataLen));
-                                out.coverMime = text::AsciiLower(mime);
-                            }
-                        }
-                    }
-                }
-            }
+            ParseFlacPicture(b.data(), b.size(), out);
         }
         pos += len;
         if (last) break;
@@ -396,6 +431,218 @@ bool ReadWav(ByteSource& s, TagInfo& out, bool wantCover) {
     return true;
 }
 
+// ---------- MP4 (M4A, AAC, ALAC) ----------
+// Дерево атомов: [размер 4][тип 4][данные]. Размер 1 - следом 64-битный, 0 - до конца родителя.
+struct Atom {
+    std::string type;
+    uint64_t body = 0;  // смещение данных
+    uint64_t size = 0;  // длина данных
+};
+
+// Атомы внутри [from, to) буфера в памяти
+std::vector<Atom> Mp4Children(const std::vector<uint8_t>& b, uint64_t from, uint64_t to) {
+    std::vector<Atom> out;
+    uint64_t pos = from;
+    while (pos + 8 <= to && out.size() < 4096) {
+        uint64_t len = Be32(&b[pos]);
+        uint64_t head = 8;
+        if (len == 1) {
+            if (pos + 16 > to) break;
+            len = (uint64_t(Be32(&b[pos + 8])) << 32) | Be32(&b[pos + 12]);
+            head = 16;
+        } else if (len == 0) {
+            len = to - pos;
+        }
+        if (len < head || len > to - pos) break;
+        out.push_back({std::string(reinterpret_cast<const char*>(&b[pos + 4]), 4), pos + head, len - head});
+        pos += len;
+    }
+    return out;
+}
+
+// Копия, а не указатель: списки детей обычно временные
+std::optional<Atom> FindAtom(const std::vector<Atom>& v, const char* type) {
+    for (const Atom& a : v)
+        if (a.type == type) return a;
+    return std::nullopt;
+}
+
+// Значение элемента ilst: атом data = [тип 4][локаль 4][данные]
+bool Mp4Data(const std::vector<uint8_t>& b, const Atom& item, uint32_t& type, uint64_t& at, uint64_t& len) {
+    const auto d = FindAtom(Mp4Children(b, item.body, item.body + item.size), "data");
+    if (!d || d->size < 8) return false;
+    type = Be32(&b[d->body]) & 0xFFFFFF;
+    at = d->body + 8;
+    len = d->size - 8;
+    return true;
+}
+
+void ParseIlst(const std::vector<uint8_t>& b, const Atom& ilst, TagInfo& out, bool wantCover) {
+    for (const Atom& item : Mp4Children(b, ilst.body, ilst.body + ilst.size)) {
+        uint32_t type = 0;
+        uint64_t at = 0, len = 0;
+        if (item.type == "----") {
+            // Свободное поле iTunes: mean (com.apple.iTunes), name (replaygain_track_gain), data
+            const auto parts = Mp4Children(b, item.body, item.body + item.size);
+            const auto name = FindAtom(parts, "name");
+            if (!name || name->size < 4 || !Mp4Data(b, item, type, at, len)) continue;
+            const std::string key = text::AsciiLower(
+                std::string(reinterpret_cast<const char*>(&b[name->body + 4]), name->size - 4));
+            ApplyExtraField(key, std::string(reinterpret_cast<const char*>(&b[at]), len), out);
+            continue;
+        }
+        if (!Mp4Data(b, item, type, at, len)) continue;
+        const std::string value(reinterpret_cast<const char*>(&b[at]), len);
+        if (item.type == "\xA9nam") SetIfEmpty(out.title, value);
+        else if (item.type == "\xA9" "ART") SetIfEmpty(out.artist, value);
+        else if (item.type == "\xA9" "alb") SetIfEmpty(out.album, value);
+        else if (item.type == "trkn" && len >= 4 && out.track == 0) out.track = (b[at + 2] << 8) | b[at + 3];
+        else if (item.type == "covr" && wantCover && out.cover.empty() && len > 0 && len <= kMaxCover) {
+            out.cover.assign(b.begin() + static_cast<long>(at), b.begin() + static_cast<long>(at + len));
+            // 13 - JPEG, 14 - PNG; иначе по сигнатуре
+            const bool png = type == 14 || (len >= 4 && b[at] == 0x89 && b[at + 1] == 'P');
+            out.coverMime = png ? "image/png" : "image/jpeg";
+        }
+    }
+}
+
+bool ReadMp4(ByteSource& s, TagInfo& out, bool wantCover) {
+    const auto h = ReadBytes(s, 0, 8);
+    if (h.size() < 8 || std::memcmp(&h[4], "ftyp", 4) != 0) return false;
+    // Ищем moov среди атомов верхнего уровня (он бывает и после mdat)
+    uint64_t pos = 0;
+    for (int guard = 0; guard < 1024 && pos + 8 <= s.Size(); ++guard) {
+        const auto a = ReadBytes(s, pos, 16);
+        if (a.size() < 8) break;
+        uint64_t len = Be32(a.data());
+        uint64_t head = 8;
+        if (len == 1 && a.size() == 16) {
+            len = (uint64_t(Be32(&a[8])) << 32) | Be32(&a[12]);
+            head = 16;
+        } else if (len == 0) {
+            len = s.Size() - pos;
+        }
+        if (len < head) break;
+        if (std::memcmp(&a[4], "moov", 4) == 0) {
+            if (len - head > kMaxTag) return true;
+            const auto moov = ReadBytes(s, pos + head, static_cast<size_t>(len - head));
+            const auto top = Mp4Children(moov, 0, moov.size());
+            if (const auto mvhd = FindAtom(top, "mvhd"); mvhd && mvhd->size >= 32) {
+                const uint8_t* m = &moov[mvhd->body];
+                // Версия 1: 64-битные времена и длительность
+                const uint32_t scale = m[0] == 1 ? Be32(m + 20) : Be32(m + 12);
+                const uint64_t dur = m[0] == 1 ? (uint64_t(Be32(m + 24)) << 32) | Be32(m + 28) : Be32(m + 16);
+                if (scale) out.duration = double(dur) / scale;
+            }
+            if (const auto udta = FindAtom(top, "udta")) {
+                const auto meta = FindAtom(Mp4Children(moov, udta->body, udta->body + udta->size), "meta");
+                if (meta && meta->size >= 8) {
+                    // meta - «полный» атом с 4 байтами версии; у старых QuickTime-файлов их нет
+                    const uint64_t skip = std::memcmp(&moov[meta->body + 4], "hdlr", 4) == 0 ? 0 : 4;
+                    const auto items = Mp4Children(moov, meta->body + skip, meta->body + meta->size);
+                    if (const auto ilst = FindAtom(items, "ilst")) ParseIlst(moov, *ilst, out, wantCover);
+                }
+            }
+            return true;
+        }
+        if (len > s.Size() - pos) break;
+        pos += len;
+    }
+    return true;
+}
+
+// ---------- Ogg (Vorbis, Opus) ----------
+// Страница: "OggS", версия, тип, позиция 8, поток 4, номер 4, CRC 4, число сегментов, таблица сегментов.
+struct OggPage {
+    uint64_t granule = 0;
+    uint32_t serial = 0;
+    uint64_t dataAt = 0;
+    std::vector<uint8_t> lacing;
+    uint64_t next = 0;
+};
+
+bool ReadOggPage(ByteSource& s, uint64_t at, OggPage& pg) {
+    const auto h = ReadBytes(s, at, 27);
+    if (h.size() < 27 || std::memcmp(h.data(), "OggS", 4) != 0) return false;
+    pg.granule = (uint64_t(Le32(&h[10])) << 32) | Le32(&h[6]);
+    pg.serial = Le32(&h[14]);
+    pg.lacing = ReadBytes(s, at + 27, h[26]);
+    if (pg.lacing.size() < h[26]) return false;
+    pg.dataAt = at + 27 + h[26];
+    uint64_t body = 0;
+    for (uint8_t l : pg.lacing) body += l;
+    pg.next = pg.dataAt + body;
+    return true;
+}
+
+// Первые пакеты первого логического потока (заголовки кодека)
+std::vector<std::vector<uint8_t>> OggHeaderPackets(ByteSource& s, size_t want, uint32_t& serial) {
+    std::vector<std::vector<uint8_t>> packets;
+    std::vector<uint8_t> cur;
+    uint64_t at = 0;
+    bool first = true;
+    for (int guard = 0; guard < 4096 && packets.size() < want; ++guard) {
+        OggPage pg;
+        if (!ReadOggPage(s, at, pg)) break;
+        at = pg.next;
+        if (first) serial = pg.serial, first = false;
+        if (pg.serial != serial) continue;
+        uint64_t off = pg.dataAt;
+        for (uint8_t l : pg.lacing) {
+            const auto part = ReadBytes(s, off, l);
+            off += l;
+            if (cur.size() + part.size() > kMaxTag) return packets;
+            cur.insert(cur.end(), part.begin(), part.end());
+            if (l < 255) {  // сегмент короче 255 закрывает пакет
+                packets.push_back(std::move(cur));
+                cur.clear();
+                if (packets.size() >= want) break;
+            }
+        }
+    }
+    return packets;
+}
+
+// Позиция последней страницы потока: ищем "OggS" с конца файла
+uint64_t OggLastGranule(ByteSource& s, uint32_t serial) {
+    const uint64_t size = s.Size();
+    const uint64_t from = size > 65536 ? size - 65536 : 0;
+    const auto tail = ReadBytes(s, from, static_cast<size_t>(size - from));
+    for (size_t i = tail.size() >= 27 ? tail.size() - 27 : 0;; --i) {
+        if (i + 27 <= tail.size() && std::memcmp(&tail[i], "OggS", 4) == 0 && Le32(&tail[i + 14]) == serial) {
+            const uint64_t g = (uint64_t(Le32(&tail[i + 10])) << 32) | Le32(&tail[i + 6]);
+            if (g != ~0ull) return g;  // -1 - на странице нет конца пакета
+        }
+        if (i == 0) break;
+    }
+    return 0;
+}
+
+bool ReadOgg(ByteSource& s, TagInfo& out, bool wantCover) {
+    const auto magic = ReadBytes(s, 0, 4);
+    if (magic.size() < 4 || std::memcmp(magic.data(), "OggS", 4) != 0) return false;
+    uint32_t serial = 0;
+    const auto packets = OggHeaderPackets(s, 2, serial);
+    if (packets.size() < 2) return true;
+    const auto& id = packets[0];
+    const auto& tags = packets[1];
+    if (id.size() >= 19 && std::memcmp(id.data(), "OpusHead", 8) == 0) {
+        // Opus: позиция всегда в 48 кГц, первые preSkip сэмплов отбрасываются
+        const uint32_t preSkip = id[10] | (id[11] << 8);
+        if (tags.size() >= 8 && std::memcmp(tags.data(), "OpusTags", 8) == 0)
+            ParseVorbisComment(tags.data() + 8, tags.size() - 8, out, wantCover);
+        const uint64_t g = OggLastGranule(s, serial);
+        if (g > preSkip) out.duration = double(g - preSkip) / 48000.0;
+    } else if (id.size() >= 16 && std::memcmp(id.data(), "\x01vorbis", 7) == 0) {
+        const uint32_t rate = Le32(&id[12]);
+        if (tags.size() >= 7 && std::memcmp(tags.data(), "\x03vorbis", 7) == 0)
+            ParseVorbisComment(tags.data() + 7, tags.size() - 7, out, wantCover);
+        const uint64_t g = OggLastGranule(s, serial);
+        if (rate && g) out.duration = double(g) / rate;
+    }
+    return true;
+}
+
 }  // namespace
 
 float ReplayGainFactor(const TagInfo& t) {
@@ -436,12 +683,21 @@ bool ReadFolderCover(const std::filesystem::path& audio, std::vector<uint8_t>& o
 
 bool IsSupportedAudio(const std::filesystem::path& path) {
     const std::string ext = text::AsciiLower(text::PathToUtf8(path.extension()));
-    return ext == ".mp3" || ext == ".flac" || ext == ".wav";
+    if (ext == ".mp3" || ext == ".flac" || ext == ".wav") return true;
+#ifdef _WIN32
+    // Через Media Foundation (core/decoder_mf.cpp); Ogg и Opus - с «Расширениями для веб-мультимедиа»
+    return ext == ".m4a" || ext == ".m4b" || ext == ".aac" || ext == ".ogg" || ext == ".oga" ||
+           ext == ".opus";
+#else
+    return false;
+#endif
 }
 
 bool ReadTags(ByteSource& s, TagInfo& out, bool wantCover) {
     out = TagInfo{};
     if (ReadWav(s, out, wantCover)) return true;
+    if (ReadMp4(s, out, wantCover)) return true;
+    if (ReadOgg(s, out, wantCover)) return true;
     const uint64_t id3 = ReadId3v2(s, 0, out, wantCover);
     if (ReadFlac(s, id3, out, wantCover)) return true;
     // Иначе считаем MP3

@@ -31,12 +31,12 @@ TEST(DownloaderArgsAndQuoting) {
     o.browser = "firefox";
     auto a = dl::BuildArgs("https://youtu.be/x", o);
     auto has = [&](const std::string& v) { return std::find(a.begin(), a.end(), v) != a.end(); };
-    CHECK(has("--no-simulate") && has("--progress") && has("-x") && has("mp3") && has("firefox"));
+    CHECK(has("--no-simulate") && has("--progress") && has("-x") && has("mp3") && has("firefox") && has("bestaudio/best"));
     CHECK(a.back() == "https://youtu.be/x" && a[a.size() - 2] == "--");  // ссылка не примется за ключ
     o.mp3 = false;
     o.browser.clear();
     a = dl::BuildArgs("https://youtu.be/x", o);
-    CHECK(!has("-x") && !has("--cookies-from-browser"));
+    CHECK(!has("-x") && !has("--cookies-from-browser") && has("bestaudio[ext=m4a]/bestaudio/best"));
 
     // Кавычки по правилам Windows
     CHECK(dl::QuoteArgs({"a", "b c"}) == "a \"b c\"");

@@ -129,7 +129,8 @@ std::vector<std::string> BuildArgs(const std::string& url, const Options& o) {
         "--progress-template", "download:PMPROG|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
         "--print", "before_dl:PMITEM|%(playlist_index)s|%(n_entries)s|%(title)s|%(artist,creator,uploader,channel)s",
         "--print", "after_move:PMFILE|%(filepath)s",
-        "-f", "bestaudio/best",
+        // Без перекодирования в MP3 берём M4A: его плеер играет через Media Foundation без расширений
+        "-f", o.mp3 ? "bestaudio/best" : "bestaudio[ext=m4a]/bestaudio/best",
         "--embed-metadata", "--embed-thumbnail",
         "-o", o.outDir + "/%(artist,creator,uploader,channel)s - %(title)s.%(ext)s",
     };

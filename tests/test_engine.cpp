@@ -171,3 +171,52 @@ TEST(PlayerGaplessAndQueueEdits) {
     CHECK(WaitFor(p, [&] { return !p.GetState().hasTrack; }, 1.0));  // команда аудиопотоку - не мгновенно
     p.Shutdown();
 }
+
+#ifdef _WIN32
+#include <objbase.h>
+
+#include <cstdlib>
+
+#include "core/tags.h"
+#include "core/text.h"
+
+// Media Foundation на настоящих файлах: папка из PM_MEDIA_DIR (m4a, opus, ogg...). Без переменной
+// тест ничего не проверяет: файлов кодеков в репозитории нет, а сделать их в Windows нечем.
+TEST(MediaFoundationDecodesFiles) {
+    const char* dirEnv = std::getenv("PM_MEDIA_DIR");
+    if (!dirEnv) return;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::error_code ec;
+    int files = 0;
+    for (const auto& it : std::filesystem::directory_iterator(text::Utf8ToPath(dirEnv), ec)) {
+        if (!pm::IsSupportedAudio(it.path())) continue;
+        ++files;
+        pm::TagInfo tags;
+        pm::ReadTags(it.path(), tags, false);
+        std::string err;
+        auto d = pm::OpenDecoder(it.path(), 2, 48000, &err);
+        std::printf("  %s: %s\n", text::PathToUtf8(it.path().filename()).c_str(), d ? "открыт" : err.c_str());
+        CHECK(d != nullptr);
+        if (!d) continue;
+        // Длина декодера и тегов совпадает до 0.1 с; декодированное - тоже
+        if (d->LengthFrames() && tags.duration > 0) CHECK_NEAR(double(d->LengthFrames()) / 48000, tags.duration, 0.1);
+        std::vector<float> buf(2 * 4096);
+        uint64_t total = 0, got = 0;
+        float peak = 0;
+        while ((got = d->Read(buf.data(), 4096)) > 0) {
+            total += got;
+            for (size_t i = 0; i < got * 2; ++i) peak = std::max(peak, std::abs(buf[i]));
+        }
+        if (tags.duration > 0) CHECK_NEAR(double(total) / 48000, tags.duration, 0.1);
+        CHECK(peak > 0.05f);  // не тишина
+        // Перемотка в середину: до конца остаётся половина
+        const uint64_t half = total / 2;
+        CHECK(d->Seek(half));
+        uint64_t rest = 0;
+        while ((got = d->Read(buf.data(), 4096)) > 0) rest += got;
+        CHECK_NEAR(double(rest), double(total - half), 48000 * 0.05);
+    }
+    CHECK(files > 0);
+    CoUninitialize();
+}
+#endif

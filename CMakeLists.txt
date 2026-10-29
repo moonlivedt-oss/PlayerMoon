@@ -67,9 +67,14 @@ add_custom_target(pm_assets DEPENDS ${PM_GEN_DIR}/builtin_assets.h)
 # ---------- Ядро ----------
 add_library(pm_core STATIC
     core/json.cpp core/playlist.cpp core/tags.cpp core/fft.cpp core/state.cpp
-    core/decoder.cpp core/engine.cpp core/player.cpp core/text.cpp core/library.cpp core/plugins.cpp)
+    core/decoder.cpp core/decoder_mf.cpp core/engine.cpp core/player.cpp core/text.cpp core/library.cpp
+    core/plugins.cpp)
 target_include_directories(pm_core PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_core PUBLIC pm_miniaudio)
+if(WIN32)
+    # Media Foundation: декодер M4A/AAC/ALAC/OGG/Opus
+    target_link_libraries(pm_core PUBLIC mfplat mfreadwrite mfuuid)
+endif()
 target_compile_options(pm_core PRIVATE ${PM_WARNINGS})
 
 add_library(pm_motion STATIC motion/spring.cpp motion/easing.cpp motion/tween.cpp)
