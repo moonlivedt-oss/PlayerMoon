@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core/fft.h"
+#include "core/history.h"
 #include "core/library.h"
 #include "core/lyrics.h"
 #include "core/player.h"
@@ -113,6 +114,18 @@ private:
     void RequestLyrics();
     void OnLyricsReady();
 
+    // ----- история, «Итоги», «Волна» (ui/app_stats.cpp) -----
+    void EnsureHistory();
+    // Трек закончился или сменился: дописать прослушивание в историю
+    void FinishListen();
+    void BeginListen();
+    void ShowStats();
+    view::PanelPage BuildStatsPage();
+    void StatsAction(int actionId);
+    void StartWave();
+    // Волна подходит к концу очереди - дописать ещё
+    void ExtendWave();
+
     // ----- плагины -----
     void InitPlugins(const std::set<std::string>& enabled);
     std::filesystem::path UserPluginsDir() const;
@@ -156,6 +169,16 @@ private:
 
     pm::LyricsService lyrics_;
     uint64_t lyricsSerial_ = 0;  // трек, для которого уже искали текст
+
+    pm::ListenTracker listen_;
+    std::filesystem::path historyPath_;
+    std::vector<pm::PlayRecord> history_;
+    bool historyLoaded_ = false;
+    bool statsOpen_ = false;  // страница «Итоги» в панели
+    pm::StatsPeriod statsPeriod_ = pm::StatsPeriod::Month;
+    uint64_t statsRevision_ = 0, statsShown_ = ~0ull;
+    bool waveMode_ = false;  // плейлист - «Волна», дописывается сама
+    bool waveExtend_ = false;
 
     pm::PluginManager plugins_;
     std::vector<PluginRow> pluginRows_;

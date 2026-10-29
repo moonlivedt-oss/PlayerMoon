@@ -68,7 +68,7 @@ add_custom_target(pm_assets DEPENDS ${PM_GEN_DIR}/builtin_assets.h)
 add_library(pm_core STATIC
     core/json.cpp core/playlist.cpp core/tags.cpp core/fft.cpp core/state.cpp
     core/decoder.cpp core/decoder_mf.cpp core/engine.cpp core/player.cpp core/text.cpp core/library.cpp
-    core/plugins.cpp core/lyrics.cpp)
+    core/plugins.cpp core/lyrics.cpp core/history.cpp)
 target_include_directories(pm_core PUBLIC ${CMAKE_SOURCE_DIR})
 target_link_libraries(pm_core PUBLIC pm_miniaudio)
 if(WIN32)
@@ -148,7 +148,7 @@ add_custom_command(TARGET pm_test_plugin_pages POST_BUILD
 
 add_executable(pm_tests tests/main.cpp tests/test_motion.cpp tests/test_json.cpp tests/test_theme.cpp
     tests/test_playlist.cpp tests/test_tags.cpp tests/test_fft.cpp tests/test_state.cpp tests/test_engine.cpp
-    tests/test_view.cpp tests/test_plugins.cpp tests/test_downloader.cpp tests/test_lyrics.cpp
+    tests/test_view.cpp tests/test_plugins.cpp tests/test_downloader.cpp tests/test_lyrics.cpp tests/test_history.cpp
     plugins/downloader/ytdlp.cpp)
 target_link_libraries(pm_tests PRIVATE pm_view pm_theme pm_core pm_motion)
 target_compile_options(pm_tests PRIVATE ${PM_WARNINGS})

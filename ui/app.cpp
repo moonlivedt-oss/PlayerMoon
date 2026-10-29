@@ -64,6 +64,8 @@ enum MenuId : UINT {
     kMenuRowNext,
     kMenuRowShow,
     kMenuRowRemove,
+    kMenuWave,
+    kMenuStats,
     kMenuThemeFirst = 100,          // встроенные темы по порядку
     kMenuLibraryFolderFirst = 200,  // папки библиотеки (убрать)
     kMenuPluginItemFirst = 1000,    // пункты, добавленные плагинами
@@ -199,6 +201,7 @@ int App::Run(HINSTANCE instance, int show) {
     }
     player_.SetOnTrackChanged([this](int index, int direction) { OnTrackChanged(index, direction); });
     pcm_.resize(analyzer_.FftSize());
+    historyPath_ = statePath_.parent_path() / L"history.jsonl";
     // Тексты песен: кэш рядом с state.json, сеть - lrclib.net в фоновом потоке
     lyrics_.Start(statePath_.parent_path() / L"lyrics",
                   [](const std::string& query, std::string& body) { return HttpsGet(L"lrclib.net", query, body); },
@@ -235,6 +238,7 @@ int App::Run(HINSTANCE instance, int show) {
     taskbar_.Detach();
     smtc_.Detach();
     lyrics_.Stop();
+    FinishListen();
     player_.Shutdown();
     renderer_.Shutdown();
     return 0;
@@ -472,6 +476,10 @@ void App::OnTrackChanged(int index, int direction) {
     covers_.Keep(keep);
     RebuildRows();  // длительность трека уточнилась после открытия декодера
     lyricsSerial_ = 0;  // текст нового трека ищется, когда видна вкладка «Текст»
+    FinishListen();
+    if (index >= 0) BeginListen();
+    // Не из колбэка плеера: плейлист дописывается на ближайшем кадре
+    if (waveMode_ && index >= 0 && index >= player_.GetPlaylist().Size() - 3) waveExtend_ = true;
     if (index >= 0) smtc_.SetTrack(np.title, np.tags.artist, np.tags.album, np.tags.track, np.tags.cover);
     else smtc_.ClearTrack();
     if (index >= 0 && started_) library_.NotePlayed(np.path, static_cast<int64_t>(time(nullptr)));
@@ -506,6 +514,7 @@ void App::LoadPaths(const std::vector<std::filesystem::path>& paths, bool append
     bool replaced = append;
     const int before = player_.GetPlaylist().Size();
     playlistFromLibrary_ = false;
+    if (!append) waveMode_ = false;
     LearnFolders(paths);
     for (const auto& p : paths) {
         std::error_code ec;
@@ -609,6 +618,9 @@ void App::ShowContextMenu(POINT screen) {
     AppendMenuW(lib, MF_STRING | (library_.AutoScan() ? MF_CHECKED : 0), kMenuLibraryAuto,
                 L"Искать новую музыку автоматически");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(lib), L"Библиотека");
+    AppendMenuW(menu, MF_STRING | (library_.Tracks().empty() ? MF_GRAYED : 0) | (waveMode_ ? MF_CHECKED : 0), kMenuWave,
+                L"Волна: любимое и забытое");
+    AppendMenuW(menu, MF_STRING, kMenuStats, L"Итоги");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     const auto& ids = themes_.BuiltinIds();
     for (size_t i = 0; i < ids.size(); ++i) {
@@ -659,6 +671,8 @@ void App::ShowContextMenu(POINT screen) {
             ApplyTopmost();
             break;
         case kMenuLibraryAll: LoadLibraryPlaylist(true); break;
+        case kMenuWave: StartWave(); break;
+        case kMenuStats: ShowStats(); break;
         case kMenuLibraryRescan: StartLibraryScan(); break;
         case kMenuLibraryAdd: AddLibraryFolder(); break;
         case kMenuLibraryAuto:
@@ -879,14 +893,20 @@ void App::OnLyricsReady() {
 }
 
 void App::PageAction(int page, int rowId, int actionId) {
+    // Страница «Итоги» - после страниц плагинов
+    if (page >= static_cast<int>(plugins_.Pages().size())) {
+        StatsAction(actionId);
+        return;
+    }
     plugins_.PageAction(static_cast<size_t>(page), rowId, actionId);
     SyncPages();
     Invalidate();
 }
 
 void App::SyncPages() {
-    if (plugins_.PagesRevision() == pagesRevision_) return;
+    if (plugins_.PagesRevision() == pagesRevision_ && statsRevision_ == statsShown_) return;
     pagesRevision_ = plugins_.PagesRevision();
+    statsShown_ = statsRevision_;
     std::vector<view::PanelPage> pages;
     for (const auto& src : plugins_.Pages()) {
         view::PanelPage p;
@@ -900,6 +920,7 @@ void App::SyncPages() {
         }
         pages.push_back(std::move(p));
     }
+    if (statsOpen_) pages.push_back(BuildStatsPage());
     view_.SetPages(std::move(pages), Now());
     Invalidate();
 }
@@ -987,6 +1008,10 @@ void App::RenderFrame() {
             spectrum = &spectrum_;
         }
     }
+    if (waveExtend_) {
+        waveExtend_ = false;
+        ExtendWave();
+    }
     SyncPages();
     if (view_.WantsLyrics()) RequestLyrics();
     view_.SetBusy(scanner_.Running(), "Поиск музыки");
@@ -1000,6 +1025,7 @@ void App::RenderFrame() {
         KillTimer(hwnd_, kLazyTimer);
     taskbar_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
     smtc_.Update(ps.hasTrack, ps.playing, ps.position, ps.duration);
+    listen_.Advance(ps.position, ps.playing);
     if (lastPlaying_ != (ps.playing ? 1 : 0)) {
         if (lastPlaying_ >= 0) plugins_.NotifyPlayState(ps.playing);
         lastPlaying_ = ps.playing ? 1 : 0;
@@ -1437,6 +1463,7 @@ void App::LoadLibraryPlaylist(bool play) {
     if (library_.Tracks().empty()) return;
     player_.LoadTracks(library_.Entries());
     playlistFromLibrary_ = true;
+    waveMode_ = false;
     RebuildRows();
     if (play) player_.PlayIndex(0);
     else player_.OpenAt(0, 0, false);
